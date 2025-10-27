@@ -16,12 +16,30 @@ spec:
       containers:
       - name: promtail
         image: grafana/promtail:2.9.0
-        volumeMounts:
-          - name: config
-            mountPath: /etc/promtail
         ports:
-          - containerPort: 9080
-      volumes:
+        - containerPort: 9080
+        volumeMounts:
         - name: config
-          configMap:
-            name: promtail-config
+          mountPath: /etc/promtail
+      volumes:
+      - name: config
+        configMap:
+          name: promtail-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: davtrowebdb
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: 9080
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+    scrape_configs:
+      - job_name: fastapi
+        static_configs:
+          - targets: ['website-db-argocd-kustomize-kyverno-grafana-loki-tempo:8000']
+            labels:
+              job: fastapi

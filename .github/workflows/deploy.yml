@@ -14,6 +14,6 @@ jobs:
 
       - name: Build and Push Docker image
         run: |
-          docker build -f website-db-argocd-kustomize-kyverno-grafana-loki-tempo/Dockerfile             -t ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo:${{ github.sha }}             -t ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo:latest             website-db-argocd-kustomize-kyverno-grafana-loki-tempo
+          docker build -f website-db-argocd-kustomize-kyverno-grafana-loki-tempo/Dockerfile -t ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo:${{ github.sha }} -t ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo:latest website-db-argocd-kustomize-kyverno-grafana-loki-tempo
           docker push ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo:${{ github.sha }}
           docker push ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo:latest

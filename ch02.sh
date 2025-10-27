@@ -13,7 +13,7 @@ echo "📁 Tworzenie struktury katalogów..."
 mkdir -p $APP_DIR/templates k8s/base k8s/overlays monitoring/base monitoring/overlays/dev .github/workflows
 
 # ==============================
-# FastAPI + PostgreSQL + Prometheus instrumentacja + logging
+# FastAPI + PostgreSQL + Prometheus + logging
 # ==============================
 cat << 'EOF' > $APP_DIR/main.py
 from fastapi import FastAPI, Form, Request
@@ -96,7 +96,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 EOF
 
 # ==============================
-# Kubernetes Base (App + DB + Ingress)
+# Kubernetes Base
 # ==============================
 cat << EOF > k8s/base/deployment.yaml
 apiVersion: apps/v1
@@ -183,12 +183,13 @@ cat << EOF > k8s/base/ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: $PROJECT-ingress
+  name: $PROJECT
   namespace: $NAMESPACE
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   rules:
-  - host: localhost
-    http:
+  - http:
       paths:
       - path: /
         pathType: Prefix
@@ -208,26 +209,11 @@ resources:
 EOF
 
 # ==============================
-# Monitoring (Prometheus/Grafana/Loki/Tempo/Promtail)
+# Monitoring
 # ==============================
-# Prometheus Config + Deployment
-cat << EOF > monitoring/base/prometheus-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: prometheus-config
-  namespace: $NAMESPACE
-data:
-  prometheus.yml: |
-    global:
-      scrape_interval: 15s
-    scrape_configs:
-      - job_name: 'fastapi'
-        metrics_path: /metrics
-        static_configs:
-          - targets: ['$PROJECT:8000']
-EOF
+mkdir -p monitoring/base
 
+# Prometheus
 cat << EOF > monitoring/base/prometheus-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -246,31 +232,34 @@ spec:
     spec:
       containers:
       - name: prometheus
-        image: prom/prometheus:2.47.0
-        volumeMounts:
-          - name: config
-            mountPath: /etc/prometheus
+        image: prom/prometheus:latest
         ports:
-          - containerPort: 9090
-      volumes:
+        - containerPort: 9090
+        volumeMounts:
         - name: config
-          configMap:
-            name: prometheus-config
-EOF
-
-# Grafana
-cat << EOF > monitoring/base/grafana-config.yaml
+          mountPath: /etc/prometheus
+      volumes:
+      - name: config
+        configMap:
+          name: prometheus-config
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-config
+  name: prometheus-config
   namespace: $NAMESPACE
 data:
-  grafana.ini: |
-    [server]
-    http_port = 3000
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      - job_name: 'fastapi'
+        metrics_path: /metrics
+        static_configs:
+          - targets: ['$PROJECT:8000']
 EOF
 
+# Grafana
 cat << EOF > monitoring/base/grafana-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -289,31 +278,22 @@ spec:
     spec:
       containers:
       - name: grafana
-        image: grafana/grafana:10.4.0
-        volumeMounts:
-          - name: config
-            mountPath: /etc/grafana
+        image: grafana/grafana:latest
         ports:
-          - containerPort: 3000
-      volumes:
-        - name: config
-          configMap:
-            name: grafana-config
-EOF
-
-# Loki
-cat << EOF > monitoring/base/loki-config.yaml
+        - containerPort: 3000
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: loki-config
+  name: grafana-config
   namespace: $NAMESPACE
 data:
-  loki.yaml: |
-    server:
-      http_listen_port: 3100
+  grafana.ini: |
+    [server]
+    http_port = 3000
 EOF
 
+# Loki
 cat << EOF > monitoring/base/loki-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -333,30 +313,28 @@ spec:
       containers:
       - name: loki
         image: grafana/loki:2.9.0
-        volumeMounts:
-          - name: config
-            mountPath: /etc/loki
         ports:
-          - containerPort: 3100
-      volumes:
+        - containerPort: 3100
+        volumeMounts:
         - name: config
-          configMap:
-            name: loki-config
-EOF
-
-# Tempo
-cat << EOF > monitoring/base/tempo-config.yaml
+          mountPath: /etc/loki
+      volumes:
+      - name: config
+        configMap:
+          name: loki-config
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: tempo-config
+  name: loki-config
   namespace: $NAMESPACE
 data:
-  tempo.yaml: |
+  loki.yaml: |
     server:
-      http_listen_port: 3200
+      http_listen_port: 3100
 EOF
 
+# Tempo
 cat << EOF > monitoring/base/tempo-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -376,38 +354,28 @@ spec:
       containers:
       - name: tempo
         image: grafana/tempo:1.6.0
-        volumeMounts:
-          - name: config
-            mountPath: /etc/tempo
         ports:
-          - containerPort: 3200
-      volumes:
+        - containerPort: 3200
+        volumeMounts:
         - name: config
-          configMap:
-            name: tempo-config
-EOF
-
-# Promtail
-cat << EOF > monitoring/base/promtail-config.yaml
+          mountPath: /etc/tempo
+      volumes:
+      - name: config
+        configMap:
+          name: tempo-config
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: promtail-config
+  name: tempo-config
   namespace: $NAMESPACE
 data:
-  promtail.yaml: |
+  tempo.yaml: |
     server:
-      http_listen_port: 9080
-    clients:
-      - url: http://loki:3100/loki/api/v1/push
-    scrape_configs:
-      - job_name: fastapi
-        static_configs:
-          - targets: ['$PROJECT:8000']
-            labels:
-              job: fastapi
+      http_listen_port: 3200
 EOF
 
+# Promtail
 cat << EOF > monitoring/base/promtail-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -427,15 +395,33 @@ spec:
       containers:
       - name: promtail
         image: grafana/promtail:2.9.0
-        volumeMounts:
-          - name: config
-            mountPath: /etc/promtail
         ports:
-          - containerPort: 9080
-      volumes:
+        - containerPort: 9080
+        volumeMounts:
         - name: config
-          configMap:
-            name: promtail-config
+          mountPath: /etc/promtail
+      volumes:
+      - name: config
+        configMap:
+          name: promtail-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: $NAMESPACE
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: 9080
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+    scrape_configs:
+      - job_name: fastapi
+        static_configs:
+          - targets: ['$PROJECT:8000']
+            labels:
+              job: fastapi
 EOF
 
 cat << EOF > monitoring/base/kustomization.yaml
@@ -454,12 +440,10 @@ EOF
 
 cat << EOF > monitoring/overlays/dev/kustomization.yaml
 resources:
-  - ../../base
+- ../../base
 namespace: $NAMESPACE
 EOF
 
-# ==============================
-# Argo
 # ==============================
 # ArgoCD Application
 # ==============================
@@ -504,17 +488,12 @@ jobs:
 
       - name: Build and Push Docker image
         run: |
-          docker build -f $PROJECT/Dockerfile \
-            -t $REGISTRY:\${{ github.sha }} \
-            -t $REGISTRY:latest \
-            $PROJECT
+          docker build -f $PROJECT/Dockerfile -t $REGISTRY:\${{ github.sha }} -t $REGISTRY:latest $PROJECT
           docker push $REGISTRY:\${{ github.sha }}
           docker push $REGISTRY:latest
 EOF
 
-echo "✅ All-in-One projekt stworzony!"
-echo "Instrukcje:"
+echo "✅ Projekt All-in-One stworzony! ArgoCD powinno od razu wdrożyć wszystkie komponenty."
 echo "1. git init && git add . && git commit -m 'init'"
 echo "2. git remote add origin https://github.com/youruser/$PROJECT.git"
 echo "3. git push -u origin main"
-echo "ArgoCD automatycznie wdroży cały stack w namespace $NAMESPACE, metryki i logi są gotowe do monitoringu."
