@@ -15,28 +15,25 @@ spec:
     spec:
       containers:
       - name: prometheus
-        image: prom/prometheus:v2.44.0
+        image: prom/prometheus:latest
         ports:
         - containerPort: 9090
         volumeMounts:
         - name: config
-          mountPath: /etc/prometheus
+          mountPath: /etc/prometheus/
       volumes:
       - name: config
         configMap:
           name: prometheus-config
 ---
 apiVersion: v1
-kind: ConfigMap
+kind: Service
 metadata:
-  name: prometheus-config
+  name: prometheus
   namespace: davtrowebdb
-data:
-  prometheus.yml: |
-    global:
-      scrape_interval: 15s
-    scrape_configs:
-      - job_name: 'fastapi'
-        metrics_path: /metrics
-        static_configs:
-          - targets: ['website-db-argocd-kustomize-kyverno-grafana-loki-tempo:8000']
+spec:
+  selector:
+    app: prometheus
+  ports:
+  - port: 9090
+    targetPort: 9090

@@ -3,8 +3,6 @@ kind: Ingress
 metadata:
   name: website-db-argocd-kustomize-kyverno-grafana-loki-tempo-ingress
   namespace: davtrowebdb
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   rules:
   - http:
