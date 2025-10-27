@@ -1,0 +1,6 @@
+resources:
+  - prometheus.yaml
+  - grafana.yaml
+  - loki.yaml
+  - tempo.yaml
+  - promtail.yaml
