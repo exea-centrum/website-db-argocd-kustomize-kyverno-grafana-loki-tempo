@@ -1,6 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
 resources:
-- prometheus-deployment.yaml
-- grafana-deployment.yaml
-- loki-deployment.yaml
-- tempo-deployment.yaml
-- promtail-deployment.yaml
+  - prometheus-deployment.yaml
+  - prometheus-service.yaml
+  - grafana-deployment.yaml
+  - grafana-service.yaml
+  - loki-deployment.yaml
+  - loki-service.yaml
+  - tempo-deployment.yaml
+  - tempo-service.yaml
+  - promtail-daemonset.yaml
