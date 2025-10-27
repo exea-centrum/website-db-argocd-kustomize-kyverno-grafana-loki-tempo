@@ -3,4 +3,4 @@ resources:
   - service.yaml
   - postgres.yaml
   - ingress.yaml
-  - ../../monitoring/base/kustomization.yaml
+  - monitoring/kustomization.yaml
