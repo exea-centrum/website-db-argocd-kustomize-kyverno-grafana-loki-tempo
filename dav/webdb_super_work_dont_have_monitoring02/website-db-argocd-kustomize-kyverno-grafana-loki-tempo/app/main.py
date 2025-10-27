@@ -4,7 +4,6 @@ from fastapi.templating import Jinja2Templates
 import psycopg2, os, logging
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# Logger dla Promtail
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fastapi_app")
 
@@ -12,7 +11,6 @@ app = FastAPI()
 templates = Jinja2Templates(directory="app/templates")
 DB_CONN = os.getenv("DATABASE_URL", "dbname=appdb user=appuser password=apppass host=db")
 
-# Prometheus
 Instrumentator().instrument(app).expose(app)
 
 @app.get("/", response_class=HTMLResponse)

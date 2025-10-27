@@ -1,6 +1,6 @@
 resources:
-  - prometheus.yaml
-  - grafana.yaml
-  - loki.yaml
-  - tempo.yaml
-  - promtail.yaml
+- prometheus-deployment.yaml
+- grafana-deployment.yaml
+- loki-deployment.yaml
+- tempo-deployment.yaml
+- promtail-deployment.yaml

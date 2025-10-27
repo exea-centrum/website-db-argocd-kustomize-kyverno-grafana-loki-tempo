@@ -4,16 +4,15 @@ metadata:
   name: website-db-argocd-kustomize-kyverno-grafana-loki-tempo-ingress
   namespace: davtrowebdb
   annotations:
-    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   rules:
-    - host: fastapi.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: website-db-argocd-kustomize-kyverno-grafana-loki-tempo
-                port:
-                  number: 80
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: website-db-argocd-kustomize-kyverno-grafana-loki-tempo
+            port:
+              number: 80
