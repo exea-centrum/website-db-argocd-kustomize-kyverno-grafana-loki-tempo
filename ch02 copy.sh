@@ -1,20 +1,17 @@
 #!/bin/bash
 set -e
 
-# ==============================
-# Konfiguracja
-# ==============================
 PROJECT="website-db-argocd-kustomize-kyverno-grafana-loki-tempo"
 NAMESPACE="davtrowebdb"
 REGISTRY="ghcr.io/exea-centrum/$PROJECT"
 APP_DIR="$PROJECT/app"
 
-echo "📁 Tworzenie struktury katalogów..."
-mkdir -p $APP_DIR/templates k8s/base .github/workflows
+echo "📁 Tworzenie katalogów..."
+mkdir -p $APP_DIR/templates k8s/base k8s/overlays monitoring/base monitoring/overlays/dev .github/workflows
 
-# ==============================
-# FastAPI + PostgreSQL + Prometheus instrumentation + logging
-# ==============================
+# =========================
+# FastAPI
+# =========================
 cat << 'EOF' > $APP_DIR/main.py
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse
@@ -82,9 +79,9 @@ prometheus-fastapi-instrumentator
 python-multipart
 EOF
 
-# ==============================
+# =========================
 # Dockerfile
-# ==============================
+# =========================
 cat << EOF > $PROJECT/Dockerfile
 FROM python:3.10-slim
 WORKDIR /app
@@ -95,13 +92,10 @@ ENV PYTHONUNBUFFERED=1
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 EOF
 
-# ==============================
-# Kubernetes Base (App + DB + Monitoring + Ingress)
-# ==============================
-cd k8s/base
-
-# ----- FastAPI Deployment -----
-cat << EOF > deployment.yaml
+# =========================
+# Kubernetes Base (App + DB + Ingress)
+# =========================
+cat << EOF > k8s/base/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -127,7 +121,7 @@ spec:
           value: "dbname=appdb user=appuser password=apppass host=db"
 EOF
 
-cat << EOF > service.yaml
+cat << EOF > k8s/base/service.yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -141,8 +135,7 @@ spec:
       targetPort: 8000
 EOF
 
-# ----- PostgreSQL Deployment -----
-cat << EOF > postgres.yaml
+cat << EOF > k8s/base/postgres.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -183,12 +176,11 @@ spec:
   - port: 5432
 EOF
 
-# ----- Ingress -----
-cat << EOF > ingress.yaml
+cat << EOF > k8s/base/ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: $PROJECT
+  name: $PROJECT-ingress
   namespace: $NAMESPACE
 spec:
   rules:
@@ -203,8 +195,23 @@ spec:
               number: 80
 EOF
 
-# ----- Prometheus -----
-cat << EOF > prometheus-config.yaml
+cat << EOF > k8s/base/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- deployment.yaml
+- service.yaml
+- postgres.yaml
+- ingress.yaml
+EOF
+
+# =========================
+# Monitoring (Prometheus, Grafana, Loki, Tempo, Promtail)
+# =========================
+mkdir -p monitoring/base
+
+# --- Prometheus ---
+cat << EOF > monitoring/base/prometheus-config.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -221,7 +228,7 @@ data:
           - targets: ['$PROJECT:8000']
 EOF
 
-cat << EOF > prometheus-deployment.yaml
+cat << EOF > monitoring/base/prometheus-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -240,29 +247,31 @@ spec:
       containers:
       - name: prometheus
         image: prom/prometheus:latest
+        ports:
+        - containerPort: 9090
         volumeMounts:
         - name: config
-          mountPath: /etc/prometheus
+          mountPath: /etc/prometheus/
       volumes:
       - name: config
         configMap:
           name: prometheus-config
-EOF
-
-# ----- Grafana -----
-cat << EOF > grafana-config.yaml
+---
 apiVersion: v1
-kind: ConfigMap
+kind: Service
 metadata:
-  name: grafana-config
+  name: prometheus
   namespace: $NAMESPACE
-data:
-  grafana.ini: |
-    [server]
-    http_port = 3000
+spec:
+  selector:
+    app: prometheus
+  ports:
+  - port: 9090
+    targetPort: 9090
 EOF
 
-cat << EOF > grafana-deployment.yaml
+# --- Grafana ---
+cat << EOF > monitoring/base/grafana-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -283,17 +292,24 @@ spec:
         image: grafana/grafana:latest
         ports:
         - containerPort: 3000
-        volumeMounts:
-        - name: config
-          mountPath: /etc/grafana
-      volumes:
-      - name: config
-        configMap:
-          name: grafana-config
 EOF
 
-# ----- Loki -----
-cat << EOF > loki-config.yaml
+cat << EOF > monitoring/base/grafana-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: $NAMESPACE
+spec:
+  selector:
+    app: grafana
+  ports:
+  - port: 3000
+    targetPort: 3000
+EOF
+
+# --- Loki ---
+cat << EOF > monitoring/base/loki-config.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -305,7 +321,7 @@ data:
       http_listen_port: 3100
 EOF
 
-cat << EOF > loki-deployment.yaml
+cat << EOF > monitoring/base/loki-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -333,10 +349,22 @@ spec:
       - name: config
         configMap:
           name: loki-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: $NAMESPACE
+spec:
+  selector:
+    app: loki
+  ports:
+  - port: 3100
+    targetPort: 3100
 EOF
 
-# ----- Tempo -----
-cat << EOF > tempo-config.yaml
+# --- Tempo ---
+cat << EOF > monitoring/base/tempo-config.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -348,7 +376,7 @@ data:
       http_listen_port: 3200
 EOF
 
-cat << EOF > tempo-deployment.yaml
+cat << EOF > monitoring/base/tempo-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -366,7 +394,7 @@ spec:
     spec:
       containers:
       - name: tempo
-        image: grafana/tempo:1.6.0
+        image: grafana/tempo:1.7.0
         ports:
         - containerPort: 3200
         volumeMounts:
@@ -376,10 +404,22 @@ spec:
       - name: config
         configMap:
           name: tempo-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: $NAMESPACE
+spec:
+  selector:
+    app: tempo
+  ports:
+  - port: 3200
+    targetPort: 3200
 EOF
 
-# ----- Promtail -----
-cat << EOF > promtail-config.yaml
+# --- Promtail ---
+cat << EOF > monitoring/base/promtail-config.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -399,7 +439,7 @@ data:
               job: fastapi
 EOF
 
-cat << EOF > promtail-deployment.yaml
+cat << EOF > monitoring/base/promtail-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -418,8 +458,8 @@ spec:
       containers:
       - name: promtail
         image: grafana/promtail:2.9.0
-        ports:
-        - containerPort: 9080
+        args:
+          - -config.file=/etc/promtail/promtail.yaml
         volumeMounts:
         - name: config
           mountPath: /etc/promtail
@@ -429,17 +469,15 @@ spec:
           name: promtail-config
 EOF
 
-# ----- Kustomization -----
-cat << EOF > kustomization.yaml
+# Kustomization monitoring
+cat << EOF > monitoring/base/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
 resources:
-- deployment.yaml
-- service.yaml
-- postgres.yaml
-- ingress.yaml
 - prometheus-config.yaml
 - prometheus-deployment.yaml
-- grafana-config.yaml
 - grafana-deployment.yaml
+- grafana-service.yaml
 - loki-config.yaml
 - loki-deployment.yaml
 - tempo-config.yaml
@@ -448,6 +486,64 @@ resources:
 - promtail-deployment.yaml
 EOF
 
-cd ../../../
+cat << EOF > monitoring/overlays/dev/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../../base
+namespace: $NAMESPACE
+EOF
 
-echo "✅ All-in-One Kubernetes manifests gotowe dla ArgoCD w k8s/base"
+# =========================
+# ArgoCD Application
+# =========================
+cat << EOF > $PROJECT/argocd-app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: $PROJECT
+  namespace: argocd
+spec:
+  destination:
+    namespace: $NAMESPACE
+    server: https://kubernetes.default.svc
+  source:
+    repoURL: https://github.com/youruser/$PROJECT.git
+    targetRevision: main
+    path: k8s/base
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+EOF
+
+# =========================
+# GitHub Actions
+# =========================
+mkdir -p .github/workflows
+cat << EOF > .github/workflows/deploy.yml
+name: Build and Push Docker Image
+on:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Log in to GHCR
+        run: echo "\${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u \${{ github.actor }} --password-stdin
+      - name: Build and Push Docker image
+        run: |
+          docker build -f $PROJECT/Dockerfile -t $REGISTRY:\${{ github.sha }} -t $REGISTRY:latest $PROJECT
+          docker push $REGISTRY:\${{ github.sha }}
+          docker push $REGISTRY:latest
+EOF
+
+echo "✅ All-in-One projekt stworzony!"
+echo "Instrukcje:"
+echo "1. git init && git add . && git commit -m 'init'"
+echo "2. git remote add origin https://github.com/youruser/$PROJECT.git"
+echo "3. git push -u origin main"
+echo "ArgoCD automatycznie wdroży aplikację + monitoring w namespace $NAMESPACE."

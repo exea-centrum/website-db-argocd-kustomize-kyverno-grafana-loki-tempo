@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: tempo
-        image: grafana/tempo:1.7.0
+        image: grafana/tempo:1.6.0
         ports:
         - containerPort: 3200
         volumeMounts:
@@ -25,15 +25,3 @@ spec:
       - name: config
         configMap:
           name: tempo-config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: tempo
-  namespace: davtrowebdb
-spec:
-  selector:
-    app: tempo
-  ports:
-  - port: 3200
-    targetPort: 3200

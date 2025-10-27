@@ -25,15 +25,3 @@ spec:
       - name: config
         configMap:
           name: loki-config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: loki
-  namespace: davtrowebdb
-spec:
-  selector:
-    app: loki
-  ports:
-  - port: 3100
-    targetPort: 3100

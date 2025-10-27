@@ -16,24 +16,10 @@ spec:
       containers:
       - name: prometheus
         image: prom/prometheus:latest
-        ports:
-        - containerPort: 9090
         volumeMounts:
         - name: config
-          mountPath: /etc/prometheus/
+          mountPath: /etc/prometheus
       volumes:
       - name: config
         configMap:
           name: prometheus-config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: prometheus
-  namespace: davtrowebdb
-spec:
-  selector:
-    app: prometheus
-  ports:
-  - port: 9090
-    targetPort: 9090

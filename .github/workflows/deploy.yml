@@ -2,6 +2,7 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [main]
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -11,6 +12,6 @@ jobs:
         run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
       - name: Build and Push Docker image
         run: |
-          docker build -f website-db-argocd-kustomize-kyverno-grafana-loki-tempo/Dockerfile -t ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo:${{ github.sha }} -t ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo:latest website-db-argocd-kustomize-kyverno-grafana-loki-tempo
+          docker build -f website-db-argocd-kustomize-kyverno-grafana-loki-tempo/Dockerfile             -t ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo:${{ github.sha }}             -t ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo:latest             website-db-argocd-kustomize-kyverno-grafana-loki-tempo
           docker push ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo:${{ github.sha }}
           docker push ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo:latest

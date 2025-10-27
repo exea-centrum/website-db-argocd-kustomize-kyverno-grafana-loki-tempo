@@ -18,3 +18,10 @@ spec:
         image: grafana/grafana:latest
         ports:
         - containerPort: 3000
+        volumeMounts:
+        - name: config
+          mountPath: /etc/grafana
+      volumes:
+      - name: config
+        configMap:
+          name: grafana-config
