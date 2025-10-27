@@ -1,0 +1,11 @@
+resources:
+- prometheus-config.yaml
+- prometheus-deployment.yaml
+- grafana-config.yaml
+- grafana-deployment.yaml
+- loki-config.yaml
+- loki-deployment.yaml
+- tempo-config.yaml
+- tempo-deployment.yaml
+- promtail-config.yaml
+- promtail-deployment.yaml
