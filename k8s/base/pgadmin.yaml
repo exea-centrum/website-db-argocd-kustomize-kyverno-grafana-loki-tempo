@@ -16,48 +16,57 @@ spec:
         app: pgadmin
     spec:
       containers:
-      - name: pgadmin
-        image: dpage/pgadmin4:latest
-        env:
-        - name: PGADMIN_DEFAULT_EMAIL
-          value: "admin@admin.com"  # Bezpośrednia wartość zamiast Secret
-        - name: PGADMIN_DEFAULT_PASSWORD
-          value: "admin"  # Bezpośrednia wartość zamiast Secret
-        - name: PGADMIN_CONFIG_SERVER_MODE
-          value: "False"
-        - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
-          value: "False"
-        ports:
-        - containerPort: 80
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "200m"
-        # USUNIĘTE: volumeMounts dla config - używamy tylko danych
-        volumeMounts:
-        - name: pgadmin-data
-          mountPath: /var/lib/pgadmin
-        livenessProbe:
-          httpGet:
-            path: /misc/ping
-            port: 80
-          initialDelaySeconds: 60  # Więcej czasu na startup
-          periodSeconds: 10
-          timeoutSeconds: 5
-        readinessProbe:
-          httpGet:
-            path: /misc/ping
-            port: 80
-          initialDelaySeconds: 30
-          periodSeconds: 5
-          timeoutSeconds: 3
+        - name: pgadmin
+          image: dpage/pgadmin4:8.8 # Use specific version instead of latest
+          env:
+            - name: PGADMIN_DEFAULT_EMAIL
+              value: "admin@admin.com"
+            - name: PGADMIN_DEFAULT_PASSWORD
+              value: "admin"
+            - name: PGADMIN_CONFIG_SERVER_MODE
+              value: "False"
+            - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
+              value: "False"
+            - name: PGADMIN_CONFIG_WTF_CSRF_ENABLED
+              value: "False"
+            - name: PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION
+              value: "False"
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "512Mi" # Increased from 256Mi
+              cpu: "200m" # Increased from 100m
+            limits:
+              memory: "1Gi" # Increased from 512Mi
+              cpu: "500m" # Increased from 200m
+          volumeMounts:
+            - name: pgadmin-data
+              mountPath: /var/lib/pgadmin
+          livenessProbe:
+            httpGet:
+              path: /misc/ping
+              port: 80
+            initialDelaySeconds: 90 # Increased from 60
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /misc/ping
+              port: 80
+            initialDelaySeconds: 60 # Increased from 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            runAsUser: 5050 # pgAdmin specific user
+            runAsGroup: 5050
+            allowPrivilegeEscalation: false
       volumes:
-      - name: pgadmin-data
-        persistentVolumeClaim:
-          claimName: pgadmin-pvc
+        - name: pgadmin-data
+          persistentVolumeClaim:
+            claimName: pgadmin-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -70,8 +79,8 @@ spec:
   selector:
     app: pgadmin
   ports:
-  - port: 80
-    targetPort: 80
+    - port: 80
+      targetPort: 80
   type: ClusterIP
 ---
 apiVersion: v1
@@ -84,4 +93,4 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 1Gi
+      storage: 2Gi # Increased from 1Gi
