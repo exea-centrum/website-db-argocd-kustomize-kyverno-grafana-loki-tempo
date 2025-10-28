@@ -3,7 +3,10 @@ kind: Deployment
 metadata:
   name: tempo
   namespace: davtrowebdb
+  labels:
+    app: tempo
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app: tempo
@@ -19,14 +22,47 @@ spec:
           - "-config.file=/etc/tempo/tempo.yaml"
         ports:
         - containerPort: 3200
+        - containerPort: 9095
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
         volumeMounts:
         - name: config
           mountPath: /etc/tempo
-        - name: traces
-          mountPath: /var/tempo/traces
+        - name: storage
+          mountPath: /var/tempo
+        - name: overrides
+          mountPath: /etc/tempo/overrides.yaml
+          subPath: overrides.yaml
       volumes:
       - name: config
         configMap:
           name: tempo-config
-      - name: traces
+      - name: overrides
+        configMap:
+          name: tempo-overrides
+      - name: storage
         emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: davtrowebdb
+  labels:
+    app: tempo
+spec:
+  selector:
+    app: tempo
+  ports:
+  - name: http
+    port: 3200
+    targetPort: 3200
+  - name: grpc
+    port: 9095
+    targetPort: 9095
+  type: ClusterIP

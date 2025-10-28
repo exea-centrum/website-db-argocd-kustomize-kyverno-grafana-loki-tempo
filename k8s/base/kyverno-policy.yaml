@@ -1,0 +1,47 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+spec:
+  validationFailureAction: enforce
+  background: false
+  rules:
+  - name: validate-resource-limits
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+    validate:
+      message: "CPU and memory resource limits are required."
+      pattern:
+        spec:
+          containers:
+          - resources:
+              limits:
+                memory: "?*"
+                cpu: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-probes
+spec:
+  validationFailureAction: enforce
+  background: false
+  rules:
+  - name: validate-liveness-readiness-probes
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+    validate:
+      message: "Liveness and readiness probes are required."
+      pattern:
+        spec:
+          containers:
+          - livenessProbe:
+              periodSeconds: ">0"
+            readinessProbe:
+              periodSeconds: ">0"
