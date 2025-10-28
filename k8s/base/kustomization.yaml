@@ -10,7 +10,6 @@ resources:
   - service.yaml
   - postgres.yaml
   - pgadmin.yaml
-  - pgadmin-fixed.yaml
   - ingress.yaml
   - prometheus-config.yaml
   - prometheus-deployment.yaml
@@ -23,9 +22,9 @@ resources:
   - promtail-config.yaml
   - promtail-deployment.yaml
   - tempo-config.yaml
-  # USUNIĘTE: tempo-overrides.yaml
   - tempo-deployment.yaml
-#  - kyverno-policy.yaml
+  # Tymczasowo wyłączone Kyverno policies - powodują problemy
+  # - kyverno-policy.yaml
 
 commonLabels:
   app: website-db-argocd-kustomize-kyverno-grafana-loki-tempo

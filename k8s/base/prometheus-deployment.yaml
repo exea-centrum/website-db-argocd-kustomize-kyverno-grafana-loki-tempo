@@ -27,6 +27,19 @@ spec:
           limits:
             memory: "1Gi"
             cpu: "500m"
+        # DODANE: Health checks
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: 9090
+          initialDelaySeconds: 5
+          periodSeconds: 5
         volumeMounts:
         - name: config
           mountPath: /etc/prometheus

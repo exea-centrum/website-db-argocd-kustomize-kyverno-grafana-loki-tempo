@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: loki
-  namespace: davtrowebdb
+  namespace: $NAMESPACE
   labels:
     app: loki
 spec:
@@ -16,54 +16,54 @@ spec:
         app: loki
     spec:
       containers:
-        - name: loki
-          image: grafana/loki:2.9.0
-          args:
-            - "-config.file=/etc/loki/loki.yaml"
-          ports:
-            - containerPort: 3100
-          resources:
-            requests:
-              memory: "256Mi"
-              cpu: "100m"
-            limits:
-              memory: "512Mi"
-              cpu: "200m"
-          livenessProbe:
-            httpGet:
-              path: /ready
-              port: 3100
-            initialDelaySeconds: 45
-            periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: 3100
-            initialDelaySeconds: 45
-            periodSeconds: 10
-          volumeMounts:
-            - name: config
-              mountPath: /etc/loki
-            - name: storage
-              mountPath: /loki
-      volumes:
+      - name: loki
+        image: grafana/loki:2.9.0
+        args:
+          - "-config.file=/etc/loki/loki.yaml"
+        ports:
+        - containerPort: 3100
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: 3100
+          initialDelaySeconds: 45
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3100
+          initialDelaySeconds: 45
+          periodSeconds: 10
+        volumeMounts:
         - name: config
-          configMap:
-            name: loki-config
+          mountPath: /etc/loki
         - name: storage
-          emptyDir: {}
+          mountPath: /loki
+      volumes:
+      - name: config
+        configMap:
+          name: loki-config
+      - name: storage
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: loki
-  namespace: davtrowebdb
+  namespace: $NAMESPACE
   labels:
     app: loki
 spec:
   selector:
     app: loki
   ports:
-    - port: 3100
-      targetPort: 3100
+  - port: 3100
+    targetPort: 3100
   type: ClusterIP
