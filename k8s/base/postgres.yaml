@@ -36,3 +36,66 @@ spec:
     app: db
   ports:
   - port: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: davtrowebdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+    spec:
+      containers:
+      - name: pgadmin
+        image: dpage/pgadmin4:8.10
+        env:
+        - name: PGADMIN_DEFAULT_EMAIL
+          value: admin@local
+        - name: PGADMIN_DEFAULT_PASSWORD
+          value: admin
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: pgadmin-data
+          mountPath: /var/lib/pgadmin
+      volumes:
+      - name: pgadmin-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgadmin
+  namespace: davtrowebdb
+spec:
+  selector:
+    app: pgadmin
+  ports:
+    - port: 5050
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pgadmin
+  namespace: davtrowebdb
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /pgadmin
+        pathType: Prefix
+        backend:
+          service:
+            name: pgadmin
+            port:
+              number: 5050
