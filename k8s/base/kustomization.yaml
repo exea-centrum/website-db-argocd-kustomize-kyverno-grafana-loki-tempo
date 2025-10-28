@@ -22,7 +22,7 @@ resources:
   - promtail-config.yaml
   - promtail-deployment.yaml
   - tempo-config.yaml
-  #  - tempo-overrides.yaml
+  # USUNIĘTE: tempo-overrides.yaml
   - tempo-deployment.yaml
   - kyverno-policy.yaml
 

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: tempo
-  namespace: davtrowebdb
+  namespace: $NAMESPACE
   labels:
     app: tempo
 spec:
@@ -16,30 +16,49 @@ spec:
         app: tempo
     spec:
       containers:
-        - name: tempo
-          image: grafana/tempo:2.5.0
-          args:
-            - "-config.file=/etc/tempo/tempo.yaml"
-          ports:
-            - containerPort: 3200
-            - containerPort: 9095
-          resources:
-            requests:
-              memory: "256Mi"
-              cpu: "100m"
-            limits:
-              memory: "512Mi"
-              cpu: "200m"
-          volumeMounts:
-            - name: config
-              mountPath: /etc/tempo
-            - name: storage
-              mountPath: /var/tempo
-          # Usunięto mount overrides
-      volumes:
+      - name: tempo
+        image: grafana/tempo:2.5.0
+        args:
+          - "-config.file=/etc/tempo/tempo.yaml"
+        ports:
+        - containerPort: 3200
+        - containerPort: 9095
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
         - name: config
-          configMap:
-            name: tempo-config
-        # Usunięto overrides
+          mountPath: /etc/tempo
         - name: storage
-          emptyDir: {}
+          mountPath: /var/tempo
+        # USUNIĘTE: volumeMount dla overrides.yaml
+      volumes:
+      - name: config
+        configMap:
+          name: tempo-config
+      # USUNIĘTE: volume dla overrides
+      - name: storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: $NAMESPACE
+  labels:
+    app: tempo
+spec:
+  selector:
+    app: tempo
+  ports:
+  - name: http
+    port: 3200
+    targetPort: 3200
+  - name: grpc
+    port: 9095
+    targetPort: 9095
+  type: ClusterIP
