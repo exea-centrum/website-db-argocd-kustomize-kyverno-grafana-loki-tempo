@@ -306,14 +306,11 @@ coverage.xml
 .DS_Store
 EOF
 
-# Reszta plików Kubernetes pozostaje bez zmian...
-# [Tutaj wstaw pozostałą część skryptu z poprzedniej odpowiedzi]
-
 # ==============================
-# GitHub Actions (POPRAWIONY - z odpowiednimi ścieżkami)
+# GitHub Actions (POPRAWIONY - BEZ kroku deploy)
 # ==============================
 cat << EOF > .github/workflows/ci-cd.yml
-name: Build, Test and Deploy
+name: Build and Test
 
 on:
   push:
@@ -412,42 +409,17 @@ jobs:
         labels: \${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Setup Kubernetes tools
-      uses: Azure/setup-kubectl@v3
-      
-    - name: Deploy to Kubernetes
-      env:
-        KUBECONFIG: \${{ secrets.KUBECONFIG }}
-      run: |
-        kubectl apply -f k8s/base/argocd-app.yaml
 EOF
 
-echo "✅ POPRAWIONO strukturę projektu dla Dockera!"
-echo "🔧 Główne zmiany:"
-echo "   - Dockerfile teraz znajduje się w katalogu głównym"
-echo "   - Aplikacja znajduje się w katalogu 'app/' (bez zagnieżdżania w $PROJECT)"
-echo "   - Poprawione ścieżki w GitHub Actions workflow"
-echo "   - Dodano .dockerignore"
+echo "✅ USUNIĘTO krok deploy z workflow!"
+echo "🎯 Teraz ArgoCD będzie automatycznie synchronizować aplikację:"
+echo "   1. GitHub Actions buduje i pushuje obraz"
+echo "   2. ArgoCD wykrywa zmianę w repozytorium"
+echo "   3. ArgoCD automatycznie deployuje nową wersję"
 echo ""
-echo "📁 Nowa struktura projektu:"
-echo "   ./"
-echo "   ├── Dockerfile"
-echo "   ├── .dockerignore"
-echo "   ├── app/"
-echo "   │   ├── main.py"
-echo "   │   ├── test_main.py"
-echo "   │   ├── requirements.txt"
-echo "   │   └── templates/"
-echo "   ├── k8s/base/"
-echo "   └── .github/workflows/"
+echo "📊 Workflow zawiera teraz tylko:"
+echo "   - Lintowanie i formatowanie kodu"
+echo "   - Uruchamianie testów"
+echo "   - Budowanie i pushowanie obrazu Docker"
 echo ""
-echo "🚀 Teraz budowanie Dockera powinno działać poprawnie!"
+echo "🚀 ArgoCD zajmie się resztą!"
