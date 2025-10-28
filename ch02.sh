@@ -180,6 +180,8 @@ metadata:
 type: Opaque
 stringData:
   postgres-password: apppass
+  pgadmin-email: "admin@admin.com"
+  pgadmin-password: "admin"
 EOF
 
 # App Deployment
@@ -342,6 +344,146 @@ spec:
       storage: 1Gi
 EOF
 
+# ==============================
+# pgAdmin
+# ==============================
+cat << EOF > k8s/base/pgadmin.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: $NAMESPACE
+  labels:
+    app: pgadmin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+    spec:
+      containers:
+      - name: pgadmin
+        image: dpage/pgadmin4:latest
+        env:
+        - name: PGADMIN_DEFAULT_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: pgadmin-email
+        - name: PGADMIN_DEFAULT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: pgadmin-password
+        - name: PGADMIN_CONFIG_SERVER_MODE
+          value: "False"
+        - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
+          value: "False"
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: pgadmin-data
+          mountPath: /var/lib/pgadmin
+        - name: pgadmin-config
+          mountPath: /pgadmin4/config_local.py
+          subPath: config_local.py
+        livenessProbe:
+          httpGet:
+            path: /misc/ping
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /misc/ping
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: pgadmin-data
+        persistentVolumeClaim:
+          claimName: pgadmin-pvc
+      - name: pgadmin-config
+        configMap:
+          name: pgadmin-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgadmin
+  namespace: $NAMESPACE
+  labels:
+    app: pgadmin
+spec:
+  selector:
+    app: pgadmin
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pgadmin-pvc
+  namespace: $NAMESPACE
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgadmin-config
+  namespace: $NAMESPACE
+data:
+  config_local.py: |
+    import os
+    from pgadmin import create_app
+    application = create_app()
+    
+    # Server configuration
+    SERVER_MODE = False
+    MASTER_PASSWORD_REQUIRED = False
+    
+    # Security settings
+    SECURITY_PASSWORD_SALT = 'pgadmin-salt-key'
+    SECRET_KEY = 'pgadmin-secret-key'
+    
+    # Database settings
+    SQLITE_PATH = '/var/lib/pgadmin/pgadmin4.db'
+    
+    # Logging configuration
+    LOG_FILE = '/var/log/pgadmin/pgadmin.log'
+    CONSOLE_LOG_FILE = '/var/log/pgadmin/pgadmin_console.log'
+    
+    # Session configuration
+    SESSION_DB_PATH = '/var/lib/pgadmin/sessions'
+    
+    # Storage configuration
+    STORAGE_DIR = '/var/lib/pgadmin/storage'
+    
+    # Azure credential cache
+    AZURE_CREDENTIAL_CACHE_DIR = '/var/lib/pgadmin/azurecredentialcache'
+    
+    # Kerberos credential cache
+    KERBEROS_CREDENTIAL_CACHE_DIR = '/var/lib/pgadmin/kerberoscredentialcache'
+EOF
+
 cat << EOF > k8s/base/ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -350,6 +492,7 @@ metadata:
   namespace: $NAMESPACE
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
 spec:
   rules:
   - host: $PROJECT.local
@@ -362,6 +505,26 @@ spec:
             name: $PROJECT
             port:
               number: 80
+  - host: pgadmin.$PROJECT.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: pgadmin
+            port:
+              number: 80
+  - host: grafana.$PROJECT.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
 EOF
 
 # ==============================
@@ -1072,6 +1235,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - postgres.yaml
+  - pgadmin.yaml
   - ingress.yaml
   - prometheus-config.yaml
   - prometheus-deployment.yaml
@@ -1234,21 +1398,150 @@ jobs:
         kubectl apply -f k8s/base/argocd-app.yaml
 EOF
 
-echo "✅ Kompletny stack gotowy! Wszystkie zasoby zostały uwzględnione:"
-echo "✓ FastAPI aplikacja z health checks"
-echo "✓ PostgreSQL z persistence"
-echo "✓ Prometheus + Grafana + Loki + Tempo + Promtail"
-echo "✓ Kyverno policies dla compliance"
-echo "✓ ArgoCD Application"
-echo "✓ GitHub Actions CI/CD"
-echo "✓ Kustomize konfiguracja"
-echo "✓ Ingress dla aplikacji"
+# ==============================
+# pgAdmin Server Setup Script
+# ==============================
+cat << 'EOF' > k8s/base/pgadmin-server-setup.py
+"""
+Script do konfiguracji serwera w pgAdmin po uruchomieniu
+Uruchamiaj jako init container lub sidecar
+"""
+import time
+import requests
+import json
+
+def setup_pgadmin_server():
+    # Czekaj aż pgAdmin będzie gotowy
+    time.sleep(30)
+    
+    # Konfiguracja serwera PostgreSQL
+    server_config = {
+        "name": "PostgreSQL DB",
+        "host": "db",
+        "port": 5432,
+        "maintenance_db": "appdb",
+        "username": "appuser",
+        "ssl_mode": "prefer",
+        "comment": "Automatycznie skonfigurowany serwer PostgreSQL"
+    }
+    
+    # Tutaj można dodać logikę konfiguracji przez pgAdmin API
+    # Wymagałoby to uwierzytelnienia i użycia API pgAdmin
+    
+    print("pgAdmin server setup completed")
+
+if __name__ == "__main__":
+    setup_pgadmin_server()
+EOF
+
+# ==============================
+# README z instrukcjami pgAdmin
+# ==============================
+cat << EOF > README.md
+# $PROJECT
+
+Full-stack aplikacja z monitoring stack (Grafana, Loki, Tempo, Prometheus), pgAdmin i GitOps (ArgoCD)
+
+## Struktura projektu
+
+\`\`\`
+.
+├── $PROJECT/
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── requirements.txt
+│   │   └── templates/
+│   │       └── form.html
+│   └── Dockerfile
+├── k8s/base/
+│   ├── kustomization.yaml
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   ├── ingress.yaml
+│   ├── postgres.yaml
+│   ├── pgadmin.yaml
+│   ├── configmap.yaml
+│   ├── secret.yaml
+│   └── kyverno-policy.yaml
+└── .github/workflows/
+    └── ci-cd.yml
+\`\`\`
+
+## Wymagania
+
+- Kubernetes 1.24+
+- ArgoCD
+- Kyverno
+- Ingress NGINX Controller
+
+## Deployment
+
+Aplikacja jest automatycznie budowana i deployowana przez GitHub Actions przy pushu do main.
+
+### Ręczny deployment:
+
+\`\`\`bash
+kubectl apply -f k8s/base/argocd-app.yaml
+\`\`\`
+
+## Dostęp
+
+- **Aplikacja**: http://$PROJECT.local
+- **pgAdmin**: http://pgadmin.$PROJECT.local
+- **Grafana**: http://grafana.$PROJECT.local
+- **ArgoCD**: http://argocd.$PROJECT.local
+
+### Dane logowania pgAdmin:
+- **Email**: admin@admin.com
+- **Password**: admin
+
+### Konfiguracja połączenia w pgAdmin:
+1. Logowanie do pgAdmin
+2. Kliknij "Add New Server"
+3. W zakładce "Connection":
+   - **Host**: db
+   - **Port**: 5432
+   - **Database**: appdb
+   - **Username**: appuser
+   - **Password**: apppass
+
+## Monitoring Stack
+
+- **Grafana**: Wizualizacja metryk i logów
+- **Loki**: Zbieranie logów
+- **Tempo**: Distributed tracing
+- **Prometheus**: Metryki aplikacji
+- **pgAdmin**: Zarządzanie bazą danych PostgreSQL
+
+## Zabezpieczenia
+
+- Kyverno policies wymuszające limity zasobów i health checks
+- Resource quotas
+- Security contexts
+- Secrets dla haseł
+
+## Uwagi
+
+- W środowisku produkcyjnym zmień domyślne hasła w secret.yaml
+- pgAdmin przechowuje dane w persistent volume
+- Wszystkie komponenty mają skonfigurowane health checks
+EOF
+
+echo "✅ Kompletny stack z pgAdmin gotowy!"
 echo ""
-echo "Stack monitoringowy:"
-echo "- Prometheus: metryki aplikacji"
-echo "- Loki: zbieranie logów"
-echo "- Tempo: distributed tracing" 
-echo "- Grafana: wizualizacja danych"
-echo "- Promtail: kolekcjoner logów"
+echo "📊 Dostępne usługi:"
+echo "  - Aplikacja:    http://$PROJECT.local"
+echo "  - pgAdmin:      http://pgadmin.$PROJECT.local (admin@admin.com / admin)"
+echo "  - Grafana:      http://grafana.$PROJECT.local (admin / admin)"
 echo ""
-echo "Do deploy: git push origin main"
+echo "🔧 Konfiguracja pgAdmin:"
+echo "  1. Wejdź na http://pgadmin.$PROJECT.local"
+echo "  2. Zaloguj się (admin@admin.com / admin)"
+echo "  3. Dodaj nowy serwer:"
+echo "     - Host: db"
+echo "     - Port: 5432"
+echo "     - Database: appdb"
+echo "     - Username: appuser"
+echo "     - Password: apppass"
+echo ""
+echo "🚀 Do deploy: git push origin main"

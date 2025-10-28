@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: davtrowebdb
+  labels:
+    app: pgadmin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+    spec:
+      containers:
+      - name: pgadmin
+        image: dpage/pgadmin4:latest
+        env:
+        - name: PGADMIN_DEFAULT_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: pgadmin-email
+        - name: PGADMIN_DEFAULT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: pgadmin-password
+        - name: PGADMIN_CONFIG_SERVER_MODE
+          value: "False"
+        - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
+          value: "False"
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: pgadmin-data
+          mountPath: /var/lib/pgadmin
+        - name: pgadmin-config
+          mountPath: /pgadmin4/config_local.py
+          subPath: config_local.py
+        livenessProbe:
+          httpGet:
+            path: /misc/ping
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /misc/ping
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: pgadmin-data
+        persistentVolumeClaim:
+          claimName: pgadmin-pvc
+      - name: pgadmin-config
+        configMap:
+          name: pgadmin-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgadmin
+  namespace: davtrowebdb
+  labels:
+    app: pgadmin
+spec:
+  selector:
+    app: pgadmin
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pgadmin-pvc
+  namespace: davtrowebdb
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgadmin-config
+  namespace: davtrowebdb
+data:
+  config_local.py: |
+    import os
+    from pgadmin import create_app
+    application = create_app()
+    
+    # Server configuration
+    SERVER_MODE = False
+    MASTER_PASSWORD_REQUIRED = False
+    
+    # Security settings
+    SECURITY_PASSWORD_SALT = 'pgadmin-salt-key'
+    SECRET_KEY = 'pgadmin-secret-key'
+    
+    # Database settings
+    SQLITE_PATH = '/var/lib/pgadmin/pgadmin4.db'
+    
+    # Logging configuration
+    LOG_FILE = '/var/log/pgadmin/pgadmin.log'
+    CONSOLE_LOG_FILE = '/var/log/pgadmin/pgadmin_console.log'
+    
+    # Session configuration
+    SESSION_DB_PATH = '/var/lib/pgadmin/sessions'
+    
+    # Storage configuration
+    STORAGE_DIR = '/var/lib/pgadmin/storage'
+    
+    # Azure credential cache
+    AZURE_CREDENTIAL_CACHE_DIR = '/var/lib/pgadmin/azurecredentialcache'
+    
+    # Kerberos credential cache
+    KERBEROS_CREDENTIAL_CACHE_DIR = '/var/lib/pgadmin/kerberoscredentialcache'

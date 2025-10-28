@@ -9,6 +9,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - postgres.yaml
+  - pgadmin.yaml
   - ingress.yaml
   - prometheus-config.yaml
   - prometheus-deployment.yaml
