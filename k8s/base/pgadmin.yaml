@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: pgadmin
-          image: dpage/pgadmin4:8.8 # Use specific version instead of latest
+          image: dpage/pgadmin4:8.8
           env:
             - name: PGADMIN_DEFAULT_EMAIL
               value: "admin@admin.com"
@@ -31,36 +31,38 @@ spec:
               value: "False"
             - name: PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION
               value: "False"
+            - name: PGADMIN_PORT
+              value: "5050" # Zmiana portu na 5050
           ports:
-            - containerPort: 80
+            - containerPort: 5050 # Zmiana portu kontenera
           resources:
             requests:
-              memory: "512Mi" # Increased from 256Mi
-              cpu: "200m" # Increased from 100m
+              memory: "512Mi"
+              cpu: "200m"
             limits:
-              memory: "1Gi" # Increased from 512Mi
-              cpu: "500m" # Increased from 200m
+              memory: "1Gi"
+              cpu: "500m"
           volumeMounts:
             - name: pgadmin-data
               mountPath: /var/lib/pgadmin
           livenessProbe:
             httpGet:
               path: /misc/ping
-              port: 80
-            initialDelaySeconds: 90 # Increased from 60
+              port: 5050 # Zmiana portu dla probe
+            initialDelaySeconds: 90
             periodSeconds: 15
             timeoutSeconds: 10
             failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /misc/ping
-              port: 80
-            initialDelaySeconds: 60 # Increased from 30
+              port: 5050 # Zmiana portu dla probe
+            initialDelaySeconds: 60
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           securityContext:
-            runAsUser: 5050 # pgAdmin specific user
+            runAsUser: 5050
             runAsGroup: 5050
             allowPrivilegeEscalation: false
       volumes:
@@ -79,8 +81,8 @@ spec:
   selector:
     app: pgadmin
   ports:
-    - port: 80
-      targetPort: 80
+    - port: 5050 # Port usługi
+      targetPort: 5050 # Port kontenera
   type: ClusterIP
 ---
 apiVersion: v1
@@ -93,4 +95,4 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 2Gi # Increased from 1Gi
+      storage: 2Gi
