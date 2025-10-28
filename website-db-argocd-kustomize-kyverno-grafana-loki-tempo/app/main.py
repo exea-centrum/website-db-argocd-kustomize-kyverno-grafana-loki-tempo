@@ -27,7 +27,9 @@ async def home(request: Request):
 
 
 @app.post("/submit", response_class=HTMLResponse)
-async def submit(request: Request, question: str = Form(...), answer: str = Form(...)):
+async def submit(
+    request: Request, question: str = Form(...), answer: str = Form(...)
+):
     try:
         conn = psycopg2.connect(DB_CONN)
         cur = conn.cursor()
@@ -39,7 +41,7 @@ async def submit(request: Request, question: str = Form(...), answer: str = Form
                 answer TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
+        """
         )
         cur.execute(
             "INSERT INTO answers(question, answer) VALUES(%s, %s)", (question, answer)
