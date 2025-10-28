@@ -38,10 +38,7 @@ def test_submit_endpoint_with_invalid_data():
 
 def test_submit_endpoint_with_valid_data():
     """Test endpointu submit z poprawnymi danymi"""
-    form_data = {
-        "question": "Jak oceniasz usługę?",
-        "answer": "Bardzo dobrze"
-    }
+    form_data = {"question": "Jak oceniasz usługę?", "answer": "Bardzo dobrze"}
     response = client.post("/submit", data=form_data)
     # Sprawdzamy czy strona się ładuje (może być 200 nawet przy błędzie DB w testach)
     assert response.status_code == 200
@@ -56,20 +53,14 @@ def test_prometheus_metrics_available():
 @pytest.fixture
 def sample_form_data():
     """Fixture z przykładowymi danymi formularza"""
-    return {
-        "question": "Czy polecisz nas?",
-        "answer": "Tak"
-    }
+    return {"question": "Czy polecisz nas?", "answer": "Tak"}
 
 
 def test_multiple_questions():
     """Test sprawdzający różne pytania"""
     questions = ["Jak oceniasz usługę?", "Czy polecisz nas?", "Jak często korzystasz?"]
     for question in questions:
-        form_data = {
-            "question": question,
-            "answer": "Test odpowiedź"
-        }
+        form_data = {"question": question, "answer": "Test odpowiedź"}
         response = client.post("/submit", data=form_data)
         assert response.status_code == 200
 
