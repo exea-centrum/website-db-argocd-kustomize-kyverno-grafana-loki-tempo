@@ -1,15 +1,16 @@
 resources:
-- deployment.yaml
-- service.yaml
-- postgres.yaml
-- ingress.yaml
-- prometheus-config.yaml
-- prometheus-deployment.yaml
-- grafana-config.yaml
-- grafana-deployment.yaml
-- loki-config.yaml
-- loki-deployment.yaml
-- tempo-config.yaml
-- tempo-deployment.yaml
-- promtail-config.yaml
-- promtail-deployment.yaml
+  - deployment.yaml
+  - service.yaml
+  - postgres.yaml
+  - ingress.yaml
+  - prometheus-config.yaml
+  - prometheus-deployment.yaml
+  - grafana-config.yaml
+  - grafana-deployment.yaml
+  - loki-config.yaml
+  - loki-deployment.yaml
+  - loki-sevice.yaml
+  - tempo-config.yaml
+  - tempo-deployment.yaml
+  - promtail-config.yaml
+  - promtail-deployment.yaml
