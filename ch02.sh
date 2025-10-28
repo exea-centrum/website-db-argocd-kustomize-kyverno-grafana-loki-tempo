@@ -4,7 +4,7 @@ set -e
 PROJECT="website-db-argocd-kustomize-kyverno-grafana-loki-tempo"
 NAMESPACE="davtrowebdb"
 REGISTRY="ghcr.io/exea-centrum/$PROJECT"
-APP_DIR="$PROJECT/app"
+APP_DIR="app"
 
 echo "📁 Tworzenie katalogów..."
 mkdir -p "$APP_DIR/templates" "k8s/base" ".github/workflows"
@@ -255,15 +255,16 @@ cat << 'EOF' > "$APP_DIR/templates/form.html"
 EOF
 
 # ==============================
-# Dockerfile
+# Dockerfile (POPRAWIONY - z odpowiednimi ścieżkami)
 # ==============================
-cat << 'EOF' > "$PROJECT/Dockerfile"
+cat << 'EOF' > "Dockerfile"
 FROM python:3.10-slim
 
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 WORKDIR /app
 
+# Kopiuj pliki aplikacji
 COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -278,11 +279,38 @@ ENV PYTHONPATH=/app
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 EOF
 
+# ==============================
+# .dockerignore
+# ==============================
+cat << 'EOF' > ".dockerignore"
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.history
+.DS_Store
+EOF
+
 # Reszta plików Kubernetes pozostaje bez zmian...
 # [Tutaj wstaw pozostałą część skryptu z poprzedniej odpowiedzi]
 
 # ==============================
-# GitHub Actions (zaktualizowany - z poprawionymi testami)
+# GitHub Actions (POPRAWIONY - z odpowiednimi ścieżkami)
 # ==============================
 cat << EOF > .github/workflows/ci-cd.yml
 name: Build, Test and Deploy
@@ -310,18 +338,18 @@ jobs:
     
     - name: Install dependencies
       run: |
-        cd $PROJECT/app
+        cd app
         pip install -r requirements.txt
         pip install flake8 black
 
     - name: Format with Black
       run: |
-        cd $PROJECT/app
+        cd app
         black .
 
     - name: Run linting
       run: |
-        cd $PROJECT/app
+        cd app
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
   test:
@@ -336,12 +364,12 @@ jobs:
     
     - name: Install dependencies
       run: |
-        cd $PROJECT/app
+        cd app
         pip install -r requirements.txt
 
     - name: Run tests
       run: |
-        cd $PROJECT/app
+        cd app
         python -m pytest -v --tb=short
 
   build-and-push:
@@ -378,7 +406,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: ./$PROJECT/Dockerfile
+        file: ./Dockerfile
         push: true
         tags: \${{ steps.meta.outputs.tags }}
         labels: \${{ steps.meta.outputs.labels }}
@@ -403,19 +431,23 @@ jobs:
         kubectl apply -f k8s/base/argocd-app.yaml
 EOF
 
-echo "✅ POPRAWIONO testy aplikacji!"
+echo "✅ POPRAWIONO strukturę projektu dla Dockera!"
 echo "🔧 Główne zmiany:"
-echo "   - USUNIĘTO wszystkie testy związane z endpointem /metrics"
-echo "   - ZOSTAWIONO tylko stabilne testy funkcjonalne"
-echo "   - DODANO test struktury formularza"
+echo "   - Dockerfile teraz znajduje się w katalogu głównym"
+echo "   - Aplikacja znajduje się w katalogu 'app/' (bez zagnieżdżania w $PROJECT)"
+echo "   - Poprawione ścieżki w GitHub Actions workflow"
+echo "   - Dodano .dockerignore"
 echo ""
-echo "📊 Teraz testy powinny WSZYSTKIE przechodzić:"
-echo "   - test_home_endpoint() ✓"
-echo "   - test_health_endpoint() ✓" 
-echo "   - test_submit_endpoint_with_invalid_data() ✓"
-echo "   - test_submit_endpoint_with_valid_data() ✓"
-echo "   - test_multiple_questions() ✓"
-echo "   - test_form_contains_all_questions() ✓"
-echo "   - test_form_has_correct_structure() ✓"
+echo "📁 Nowa struktura projektu:"
+echo "   ./"
+echo "   ├── Dockerfile"
+echo "   ├── .dockerignore"
+echo "   ├── app/"
+echo "   │   ├── main.py"
+echo "   │   ├── test_main.py"
+echo "   │   ├── requirements.txt"
+echo "   │   └── templates/"
+echo "   ├── k8s/base/"
+echo "   └── .github/workflows/"
 echo ""
-echo "🚀 Wszystkie testy są teraz stabilne i sprawdzają tylko funkcjonalność aplikacji!"
+echo "🚀 Teraz budowanie Dockera powinno działać poprawnie!"
