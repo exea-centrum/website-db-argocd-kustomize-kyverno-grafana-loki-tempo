@@ -94,13 +94,12 @@ async def health_check():
         return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
 
 
-@app.get("/metrics")
-async def metrics():
-    return {"message": "Metrics available at /metrics endpoint"}
+# Usuwamy endpoint /metrics ponieważ jest już dostarczany przez prometheus-fastapi-instrumentator
+# pod ścieżką /metrics w formacie Prometheus
 EOF
 
 # ==============================
-# Testy dla aplikacji
+# Testy dla aplikacji (poprawione)
 # ==============================
 cat << 'EOF' > "$APP_DIR/test_main.py"
 import pytest
@@ -115,6 +114,7 @@ def test_home_endpoint():
     response = client.get("/")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
+    assert "Formularz Ankiety" in response.text
 
 
 def test_health_endpoint():
@@ -124,20 +124,22 @@ def test_health_endpoint():
     data = response.json()
     assert "status" in data
     assert "database" in data
+    assert data["status"] in ["healthy", "unhealthy"]
 
 
-def test_metrics_endpoint():
-    """Test endpointu metryk"""
+def test_prometheus_metrics_endpoint():
+    """Test endpointu metryk Prometheusa"""
     response = client.get("/metrics")
     assert response.status_code == 200
-    data = response.json()
-    assert "message" in data
+    # Sprawdzamy czy odpowiedź zawiera typowe metryki Prometheusa
+    content = response.text
+    assert "http_request" in content or "process_cpu" in content or "python_gc" in content
 
 
 def test_submit_endpoint_with_invalid_data():
     """Test endpointu submit z niepoprawnymi danymi"""
     response = client.post("/submit", data={})
-    # Powinien zwrócić błąd walidacji
+    # Powinien zwrócić błąd walidacji (422 Unprocessable Entity)
     assert response.status_code == 422
 
 
@@ -150,21 +152,7 @@ def test_submit_endpoint_with_valid_data():
     response = client.post("/submit", data=form_data)
     # Sprawdzamy czy strona się ładuje (może być 200 nawet przy błędzie DB w testach)
     assert response.status_code == 200
-
-
-def test_prometheus_metrics_available():
-    """Test czy endpoint metryk Prometheusa jest dostępny"""
-    response = client.get("/metrics")
-    assert response.status_code == 200
-
-
-@pytest.fixture
-def sample_form_data():
-    """Fixture z przykładowymi danymi formularza"""
-    return {
-        "question": "Czy polecisz nas?",
-        "answer": "Tak"
-    }
+    assert "text/html" in response.headers["content-type"]
 
 
 def test_multiple_questions():
@@ -177,6 +165,31 @@ def test_multiple_questions():
         }
         response = client.post("/submit", data=form_data)
         assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+
+def test_form_contains_all_questions():
+    """Test czy formularz zawiera wszystkie pytania"""
+    response = client.get("/")
+    content = response.text
+    assert "Jak oceniasz usługę?" in content
+    assert "Czy polecisz nas?" in content
+    assert "Jak często korzystasz?" in content
+
+
+@pytest.fixture
+def sample_form_data():
+    """Fixture z przykładowymi danymi formularza"""
+    return {
+        "question": "Czy polecisz nas?",
+        "answer": "Tak"
+    }
+
+
+def test_submit_with_fixture(sample_form_data):
+    """Test używający fixture"""
+    response = client.post("/submit", data=sample_form_data)
+    assert response.status_code == 200
 
 
 if __name__ == "__main__":
@@ -192,10 +205,13 @@ testpaths = test_main.py
 python_files = test_*.py
 python_classes = Test*
 python_functions = test_*
-addopts = -v --tb=short
+addopts = -v --tb=short --strict-markers
 filterwarnings =
     ignore::DeprecationWarning
     ignore::UserWarning
+markers =
+    slow: marks tests as slow (deselect with '-m "not slow"')
+    integration: marks tests as integration tests
 EOF
 
 # ==============================
@@ -285,7 +301,7 @@ EOF
 # [Tutaj wstaw pozostałą część skryptu z poprzedniej odpowiedzi]
 
 # ==============================
-# GitHub Actions (zaktualizowany - z testami)
+# GitHub Actions (zaktualizowany - z poprawionymi testami)
 # ==============================
 cat << EOF > .github/workflows/ci-cd.yml
 name: Build, Test and Deploy
@@ -338,7 +354,6 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    needs: lint-and-format
     steps:
     - uses: actions/checkout@v4
     
@@ -359,7 +374,7 @@ jobs:
         python -m pytest -v --tb=short
 
   build-and-push:
-    needs: test
+    needs: [lint-and-format, test]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     
@@ -417,12 +432,21 @@ jobs:
         kubectl apply -f k8s/base/argocd-app.yaml
 EOF
 
-echo "✅ Dodano testy do aplikacji!"
-echo "📝 Utworzone testy:"
-echo "   - test_home_endpoint() - test głównego endpointu"
-echo "   - test_health_endpoint() - test health check"
-echo "   - test_metrics_endpoint() - test metryk"
-echo "   - test_submit_endpoint_with_valid_data() - test formularza"
-echo "   - test_prometheus_metrics_available() - test dostępności metryk"
+echo "✅ Poprawiono testy aplikacji!"
+echo "🔧 Główne zmiany:"
+echo "   - Usunięto niestandardowy endpoint /metrics (zastąpiony przez prometheus-fastapi-instrumentator)"
+echo "   - Poprawiono test_prometheus_metrics_endpoint() do sprawdzania formatu Prometheus"
+echo "   - Dodano więcej asercji w testach dla lepszego pokrycia"
+echo "   - Ulepszono konfigurację pytest.ini"
 echo ""
-echo "🚀 Teraz testy powinny przechodzić pomyślnie!"
+echo "📊 Testy powinny teraz wszystkie przechodzić:"
+echo "   - test_home_endpoint() ✓"
+echo "   - test_health_endpoint() ✓" 
+echo "   - test_prometheus_metrics_endpoint() ✓"
+echo "   - test_submit_endpoint_with_invalid_data() ✓"
+echo "   - test_submit_endpoint_with_valid_data() ✓"
+echo "   - test_multiple_questions() ✓"
+echo "   - test_form_contains_all_questions() ✓"
+echo "   - test_submit_with_fixture() ✓"
+echo ""
+echo "🚀 Teraz wszystkie testy powinny przechodzić pomyślnie!"
