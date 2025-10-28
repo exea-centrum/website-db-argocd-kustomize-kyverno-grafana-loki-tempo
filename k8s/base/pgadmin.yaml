@@ -1,32 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pgadmin
+  name: pgadmin-test
   namespace: davtrowebdb
-  labels:
-    app: pgadmin
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: pgadmin
   template:
-    metadata:
-      labels:
-        app: pgadmin
     spec:
-      initContainers:
-        - name: fix-permissions
-          image: busybox
-          command:
-            [
-              "sh",
-              "-c",
-              'chown -R 5050:5050 /var/lib/pgadmin && echo "Permissions fixed"',
-            ]
-          volumeMounts:
-            - name: pgadmin-data
-              mountPath: /var/lib/pgadmin
       containers:
         - name: pgadmin
           image: dpage/pgadmin4:8.8
@@ -36,20 +15,11 @@ spec:
             - name: PGADMIN_DEFAULT_PASSWORD
               value: "admin"
             - name: PGADMIN_CONFIG_SERVER_MODE
-              value: "True" # ZMIENIONE: Musi być True dla działania w Kubernetes
+              value: "False"
             - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
-              value: "False"
-            - name: PGADMIN_CONFIG_WTF_CSRF_ENABLED
-              value: "False"
-            - name: PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION
               value: "False"
             - name: PGADMIN_PORT
               value: "5050"
-            # DODAJ TE ZMIENNE:
-            - name: PGADMIN_CONFIG_LOGIN_BANNER
-              value: "Welcome to pgAdmin 4"
-            - name: PGADMIN_SERVER_MODE
-              value: "True"
           ports:
             - containerPort: 5050
           resources:
@@ -59,27 +29,4 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "500m"
-          volumeMounts:
-            - name: pgadmin-data
-              mountPath: /var/lib/pgadmin
-              allowPrivilegeEscalation: false
-          livenessProbe:
-            httpGet:
-              path: /misc/ping
-              port: 5050
-            initialDelaySeconds: 90
-            periodSeconds: 15
-            timeoutSeconds: 10
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /misc/ping
-              port: 5050
-            initialDelaySeconds: 60
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
-      volumes:
-        - name: pgadmin-data
-          persistentVolumeClaim:
-            claimName: pgadmin-pvc
+          # Bez volumeMounts i securityContext
