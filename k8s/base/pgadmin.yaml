@@ -1,19 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pgadmin
+  name: pgadmin-test
   namespace: davtrowebdb
-  labels:
-    app: pgadmin
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: pgadmin
   template:
-    metadata:
-      labels:
-        app: pgadmin
     spec:
       containers:
         - name: pgadmin
@@ -27,14 +18,10 @@ spec:
               value: "False"
             - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
               value: "False"
-            - name: PGADMIN_CONFIG_WTF_CSRF_ENABLED
-              value: "False"
-            - name: PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION
-              value: "False"
             - name: PGADMIN_PORT
-              value: "5050" # Zmiana portu na 5050
+              value: "5050"
           ports:
-            - containerPort: 5050 # Zmiana portu kontenera
+            - containerPort: 5050
           resources:
             requests:
               memory: "512Mi"
@@ -42,57 +29,4 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "500m"
-          volumeMounts:
-            - name: pgadmin-data
-              mountPath: /var/lib/pgadmin
-          livenessProbe:
-            httpGet:
-              path: /misc/ping
-              port: 5050 # Zmiana portu dla probe
-            initialDelaySeconds: 90
-            periodSeconds: 15
-            timeoutSeconds: 10
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /misc/ping
-              port: 5050 # Zmiana portu dla probe
-            initialDelaySeconds: 60
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
-          securityContext:
-            runAsUser: 5050
-            runAsGroup: 5050
-            allowPrivilegeEscalation: false
-      volumes:
-        - name: pgadmin-data
-          persistentVolumeClaim:
-            claimName: pgadmin-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: pgadmin
-  namespace: davtrowebdb
-  labels:
-    app: pgadmin
-spec:
-  selector:
-    app: pgadmin
-  ports:
-    - port: 5050 # Port usługi
-      targetPort: 5050 # Port kontenera
-  type: ClusterIP
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: pgadmin-pvc
-  namespace: davtrowebdb
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 2Gi
+          # Bez volumeMounts i securityContext
