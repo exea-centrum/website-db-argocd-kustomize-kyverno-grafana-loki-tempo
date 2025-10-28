@@ -4,7 +4,6 @@ metadata:
   name: loki
   namespace: davtrowebdb
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: loki
@@ -25,13 +24,3 @@ spec:
       - name: config
         configMap:
           name: loki-config
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: loki-config
-  namespace: davtrowebdb
-data:
-  loki.yaml: |
-    server:
-      http_listen_port: 3100

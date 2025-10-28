@@ -4,7 +4,6 @@ metadata:
   name: tempo
   namespace: davtrowebdb
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: tempo
@@ -25,13 +24,3 @@ spec:
       - name: config
         configMap:
           name: tempo-config
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: tempo-config
-  namespace: davtrowebdb
-data:
-  tempo.yaml: |
-    server:
-      http_listen_port: 3200

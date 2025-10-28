@@ -4,11 +4,11 @@ from fastapi.templating import Jinja2Templates
 import psycopg2, os, logging
 from prometheus_fastapi_instrumentator import Instrumentator
 
+app = FastAPI()
+templates = Jinja2Templates(directory="app/templates")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fastapi_app")
 
-app = FastAPI()
-templates = Jinja2Templates(directory="app/templates")
 DB_CONN = os.getenv("DATABASE_URL", "dbname=appdb user=appuser password=apppass host=db")
 
 Instrumentator().instrument(app).expose(app)
@@ -27,5 +27,5 @@ async def submit(request: Request, question: str = Form(...), answer: str = Form
     conn.commit()
     cur.close()
     conn.close()
-    logger.info(f"Odpowiedź zapisana: {question} => {answer}")
+    logger.info(f"Odpowiedź: {question} -> {answer}")
     return templates.TemplateResponse("form.html", {"request": request, "submitted": True, "questions": ["Jak oceniasz usługę?", "Czy polecisz nas?", "Jak często korzystasz?"]})

@@ -4,7 +4,6 @@ metadata:
   name: prometheus
   namespace: davtrowebdb
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: prometheus
@@ -25,18 +24,3 @@ spec:
       - name: config
         configMap:
           name: prometheus-config
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: prometheus-config
-  namespace: davtrowebdb
-data:
-  prometheus.yml: |
-    global:
-      scrape_interval: 15s
-    scrape_configs:
-      - job_name: 'fastapi'
-        metrics_path: /metrics
-        static_configs:
-          - targets: ['website-db-argocd-kustomize-kyverno-grafana-loki-tempo:8000']
