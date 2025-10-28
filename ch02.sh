@@ -10,13 +10,15 @@ echo "📁 Tworzenie katalogów..."
 mkdir -p "$APP_DIR/templates" "k8s/base" ".github/workflows"
 
 # ==============================
-# FastAPI Aplikacja
+# FastAPI Aplikacja (sformatowana zgodnie z Black)
 # ==============================
 cat << 'EOF' > "$APP_DIR/main.py"
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-import psycopg2, os, logging
+import psycopg2
+import os
+import logging
 from prometheus_fastapi_instrumentator import Instrumentator
 
 app = FastAPI()
@@ -28,42 +30,57 @@ DB_CONN = os.getenv("DATABASE_URL", "dbname=appdb user=appuser password=apppass 
 
 Instrumentator().instrument(app).expose(app)
 
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     questions = ["Jak oceniasz usługę?", "Czy polecisz nas?", "Jak często korzystasz?"]
     return templates.TemplateResponse("form.html", {"request": request, "questions": questions})
+
 
 @app.post("/submit", response_class=HTMLResponse)
 async def submit(request: Request, question: str = Form(...), answer: str = Form(...)):
     try:
         conn = psycopg2.connect(DB_CONN)
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS answers(
                 id SERIAL PRIMARY KEY, 
                 question TEXT, 
                 answer TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        cur.execute("INSERT INTO answers(question, answer) VALUES(%s, %s)", (question, answer))
+            """
+        )
+        cur.execute(
+            "INSERT INTO answers(question, answer) VALUES(%s, %s)", (question, answer)
+        )
         conn.commit()
         logger.info(f"Zapisano odpowiedź: {question} -> {answer}")
-        return templates.TemplateResponse("form.html", {
-            "request": request, 
-            "submitted": True, 
-            "questions": ["Jak oceniasz usługę?", "Czy polecisz nas?", "Jak często korzystasz?"]
-        })
+        return templates.TemplateResponse(
+            "form.html",
+            {
+                "request": request,
+                "submitted": True,
+                "questions": ["Jak oceniasz usługę?", "Czy polecisz nas?", "Jak często korzystasz?"],
+            },
+        )
     except Exception as e:
         logger.error(f"Błąd bazy danych: {e}")
-        return templates.TemplateResponse("form.html", {
-            "request": request, 
-            "error": True,
-            "questions": ["Jak oceniasz usługę?", "Czy polecisz nas?", "Jak często korzystasz?"]
-        })
+        return templates.TemplateResponse(
+            "form.html",
+            {
+                "request": request,
+                "error": True,
+                "questions": ["Jak oceniasz usługę?", "Czy polecisz nas?", "Jak często korzystasz?"],
+            },
+        )
     finally:
-        if 'cur' in locals(): cur.close()
-        if 'conn' in locals(): conn.close()
+        if "cur" in locals():
+            cur.close()
+        if "conn" in locals():
+            conn.close()
+
 
 @app.get("/health")
 async def health_check():
@@ -73,6 +90,7 @@ async def health_check():
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
+
 
 @app.get("/metrics")
 async def metrics():
@@ -1300,7 +1318,7 @@ spec:
 EOF
 
 # ==============================
-# GitHub Actions
+# GitHub Actions (z auto-format)
 # ==============================
 cat << EOF > .github/workflows/ci-cd.yml
 name: Build, Test and Deploy
@@ -1316,6 +1334,41 @@ env:
   IMAGE_NAME: $REGISTRY
 
 jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        cd $PROJECT/app
+        pip install -r requirements.txt
+        pip install flake8 black pytest pytest-asyncio
+
+    - name: Format with Black
+      run: |
+        cd $PROJECT/app
+        black .
+
+    - name: Run linting
+      run: |
+        cd $PROJECT/app
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+    - name: Commit formatted code
+      if: github.ref == 'refs/heads/main'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add -A
+        git diff --staged --quiet || git commit -m "Format code with Black"
+        git push
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -1331,16 +1384,14 @@ jobs:
         cd $PROJECT/app
         pip install -r requirements.txt
         pip install pytest pytest-asyncio
-    
-    - name: Run linting
+
+    - name: Run tests
       run: |
         cd $PROJECT/app
-        pip install flake8 black
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        black --check .
+        python -m pytest -v
 
   build-and-push:
-    needs: test
+    needs: [lint-and-format, test]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     
