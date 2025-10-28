@@ -22,10 +22,14 @@ spec:
         volumeMounts:
         - name: config
           mountPath: /etc/loki
+        - name: wal-storage
+          mountPath: /wal
       volumes:
       - name: config
         configMap:
           name: loki-config
+      - name: wal-storage
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

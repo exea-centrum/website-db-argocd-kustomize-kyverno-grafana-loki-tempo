@@ -19,3 +19,10 @@ spec:
           - "-config.file=/etc/tempo/tempo.yaml"
         ports:
         - containerPort: 3200
+        volumeMounts:
+        - name: config
+          mountPath: /etc/tempo
+      volumes:
+      - name: config
+        configMap:
+          name: tempo-config

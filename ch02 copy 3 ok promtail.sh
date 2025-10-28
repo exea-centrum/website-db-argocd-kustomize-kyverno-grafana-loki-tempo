@@ -282,7 +282,7 @@ spec:
       targetPort: 3000
 EOF
 
-# Loki (naprawiony config + WAL)
+# Loki (naprawiony config path!)
 cat << EOF > k8s/base/loki-config.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -294,14 +294,14 @@ data:
     server:
       http_listen_port: 3100
     ingester:
-      wal:
-        dir: /wal
       lifecycler:
         address: 127.0.0.1
         ring:
           kvstore:
             store: inmemory
           replication_factor: 1
+      chunk_idle_period: 1h
+      chunk_retain_period: 30s
     schema_config:
       configs:
         - from: 2020-10-24
@@ -316,6 +316,9 @@ data:
         directory: /loki/index
       filesystem:
         directory: /loki/chunks
+    limits_config:
+      reject_old_samples: true
+      reject_old_samples_max_age: 168h
 EOF
 
 cat << EOF > k8s/base/loki-deployment.yaml
@@ -343,14 +346,10 @@ spec:
         volumeMounts:
         - name: config
           mountPath: /etc/loki
-        - name: wal-storage
-          mountPath: /wal
       volumes:
       - name: config
         configMap:
           name: loki-config
-      - name: wal-storage
-        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -365,7 +364,7 @@ spec:
       targetPort: 3100
 EOF
 
-# Promtail
+# Promtail (zbiera logi z FastAPI)
 cat << EOF > k8s/base/promtail-config.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -417,47 +416,7 @@ spec:
           name: promtail-config
 EOF
 
-# Tempo + config
-cat << EOF > k8s/base/tempo-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: tempo-config
-  namespace: $NAMESPACE
-data:
-  tempo.yaml: |
-    server:
-      http_listen_port: 3200
-    distributor:
-      receivers:
-        jaeger:
-          protocols:
-            thrift_http:
-    ingester:
-      trace_idle_period: 10s
-      max_block_duration: 5m
-    compactor:
-      compaction:
-        block_retention: 1h
-    storage:
-      trace:
-        backend: local
-        local:
-          path: /tmp/tempo/traces
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: tempo
-  namespace: $NAMESPACE
-spec:
-  selector:
-    app: tempo
-  ports:
-    - port: 3200
-      targetPort: 3200
-EOF
-
+# Tempo
 cat << EOF > k8s/base/tempo-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -480,13 +439,6 @@ spec:
           - "-config.file=/etc/tempo/tempo.yaml"
         ports:
         - containerPort: 3200
-        volumeMounts:
-        - name: config
-          mountPath: /etc/tempo
-      volumes:
-      - name: config
-        configMap:
-          name: tempo-config
 EOF
 
 # ==============================
@@ -505,7 +457,6 @@ resources:
 - loki-deployment.yaml
 - promtail-config.yaml
 - promtail-deployment.yaml
-- tempo-config.yaml
 - tempo-deployment.yaml
 EOF
 
@@ -536,7 +487,7 @@ spec:
 EOF
 
 # ==============================
-# GitHub Actions
+# GitHub Actions (build & push)
 # ==============================
 cat << EOF > .github/workflows/deploy.yml
 name: Build and Push
@@ -557,4 +508,4 @@ jobs:
           docker push $REGISTRY:latest
 EOF
 
-echo "✅ Stack gotowy: Loki (naprawiony WAL), Tempo (działa), ArgoCD path: k8s/base"
+echo "✅ All-in-one stack gotowy — Loki fixed, Promtail connected, ArgoCD path: k8s/base"

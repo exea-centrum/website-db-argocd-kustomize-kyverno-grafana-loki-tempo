@@ -10,4 +10,5 @@ resources:
 - loki-deployment.yaml
 - promtail-config.yaml
 - promtail-deployment.yaml
+- tempo-config.yaml
 - tempo-deployment.yaml
