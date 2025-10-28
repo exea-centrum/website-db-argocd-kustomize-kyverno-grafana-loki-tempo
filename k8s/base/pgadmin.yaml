@@ -36,7 +36,7 @@ spec:
             - name: PGADMIN_DEFAULT_PASSWORD
               value: "admin"
             - name: PGADMIN_CONFIG_SERVER_MODE
-              value: "False"
+              value: "True" # Zmienione z False na True
             - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
               value: "False"
             - name: PGADMIN_CONFIG_WTF_CSRF_ENABLED
@@ -57,7 +57,10 @@ spec:
           volumeMounts:
             - name: pgadmin-data
               mountPath: /var/lib/pgadmin
-              allowPrivilegeEscalation: false
+          securityContext:
+            runAsUser: 5050
+            runAsGroup: 5050
+            allowPrivilegeEscalation: false
           livenessProbe:
             httpGet:
               path: /misc/ping
@@ -78,30 +81,3 @@ spec:
         - name: pgadmin-data
           persistentVolumeClaim:
             claimName: pgadmin-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: pgadmin
-  namespace: davtrowebdb
-  labels:
-    app: pgadmin
-spec:
-  selector:
-    app: pgadmin
-  ports:
-    - port: 5050
-      targetPort: 5050
-  type: ClusterIP
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: pgadmin-pvc
-  namespace: davtrowebdb
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 2Gi
