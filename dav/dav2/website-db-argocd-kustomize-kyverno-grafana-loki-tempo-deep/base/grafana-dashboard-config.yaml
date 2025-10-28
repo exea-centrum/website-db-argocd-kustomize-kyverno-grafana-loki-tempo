@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-fastapi
+  namespace: davtrowebdb
+  labels:
+    grafana_dashboard: "1"
+data:
+  fastapi-overview.json: |
+    {
+      "title": "FastAPI Overview",
+      "tags": ["fastapi", "monitoring"],
+      "timezone": "browser",
+      "panels": [
+        {
+          "id": 1,
+          "title": "HTTP Requests",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "rate(http_requests_total[5m])",
+              "legendFormat": "req/s"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "title": "Application Logs",
+          "type": "logs",
+          "datasource": "Loki",
+          "targets": [
+            {
+              "expr": "{app=\"$PROJECT\"}",
+              "refId": "A"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 36,
+      "version": 1
+    }

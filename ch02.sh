@@ -10,7 +10,7 @@ echo "📁 Tworzenie katalogów..."
 mkdir -p "$APP_DIR/templates" "k8s/base" ".github/workflows"
 
 # ==============================
-# FastAPI Aplikacja (poprawione formatowanie dla Black)
+# FastAPI Aplikacja
 # ==============================
 cat << 'EOF' > "$APP_DIR/main.py"
 from fastapi import FastAPI, Form, Request
@@ -95,7 +95,7 @@ async def health_check():
 EOF
 
 # ==============================
-# Testy dla aplikacji (POPRAWIONE - tylko działające testy)
+# Testy dla aplikacji
 # ==============================
 cat << 'EOF' > "$APP_DIR/test_main.py"
 import pytest
@@ -255,7 +255,7 @@ cat << 'EOF' > "$APP_DIR/templates/form.html"
 EOF
 
 # ==============================
-# Dockerfile (POPRAWIONY - z odpowiednimi ścieżkami)
+# Dockerfile
 # ==============================
 cat << 'EOF' > "Dockerfile"
 FROM python:3.10-slim
@@ -307,7 +307,1146 @@ coverage.xml
 EOF
 
 # ==============================
-# GitHub Actions (POPRAWIONY - BEZ kroku deploy)
+# Kubernetes Base Resources
+# ==============================
+
+# ConfigMap i Secret
+cat << EOF > k8s/base/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: $PROJECT-config
+  namespace: $NAMESPACE
+data:
+  DATABASE_URL: "dbname=appdb user=appuser password=apppass host=db"
+EOF
+
+cat << EOF > k8s/base/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-secret
+  namespace: $NAMESPACE
+type: Opaque
+stringData:
+  postgres-password: apppass
+  pgadmin-email: "admin@admin.com"
+  pgadmin-password: "admin"
+EOF
+
+# App Deployment
+cat << EOF > k8s/base/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: $PROJECT
+  namespace: $NAMESPACE
+  labels:
+    app: $PROJECT
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: $PROJECT
+  template:
+    metadata:
+      labels:
+        app: $PROJECT
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: app
+        image: $REGISTRY:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: $PROJECT-config
+              key: DATABASE_URL
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+EOF
+
+cat << EOF > k8s/base/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: $PROJECT
+  namespace: $NAMESPACE
+  labels:
+    app: $PROJECT
+spec:
+  selector:
+    app: $PROJECT
+  ports:
+    - port: 80
+      targetPort: 8000
+      protocol: TCP
+  type: ClusterIP
+EOF
+
+# PostgreSQL
+cat << EOF > k8s/base/postgres.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+  namespace: $NAMESPACE
+  labels:
+    app: db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:14-alpine
+        env:
+        - name: POSTGRES_DB
+          value: appdb
+        - name: POSTGRES_USER
+          value: appuser
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: postgres-password
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: db-data
+          mountPath: /var/lib/postgresql/data
+        livenessProbe:
+          exec:
+            command: ["pg_isready", "-U", "appuser"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "appuser"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: db-data
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: $NAMESPACE
+  labels:
+    app: db
+spec:
+  selector:
+    app: db
+  ports:
+  - port: 5432
+    targetPort: 5432
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: $NAMESPACE
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+EOF
+
+# pgAdmin
+cat << EOF > k8s/base/pgadmin.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: $NAMESPACE
+  labels:
+    app: pgadmin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
+  template:
+    metadata:
+      labels:
+        app: pgadmin
+    spec:
+      containers:
+      - name: pgadmin
+        image: dpage/pgadmin4:latest
+        env:
+        - name: PGADMIN_DEFAULT_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: pgadmin-email
+        - name: PGADMIN_DEFAULT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: pgadmin-password
+        - name: PGADMIN_CONFIG_SERVER_MODE
+          value: "False"
+        - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
+          value: "False"
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: pgadmin-data
+          mountPath: /var/lib/pgadmin
+        - name: pgadmin-config
+          mountPath: /pgadmin4/config_local.py
+          subPath: config_local.py
+        livenessProbe:
+          httpGet:
+            path: /misc/ping
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /misc/ping
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: pgadmin-data
+        persistentVolumeClaim:
+          claimName: pgadmin-pvc
+      - name: pgadmin-config
+        configMap:
+          name: pgadmin-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgadmin
+  namespace: $NAMESPACE
+  labels:
+    app: pgadmin
+spec:
+  selector:
+    app: pgadmin
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pgadmin-pvc
+  namespace: $NAMESPACE
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgadmin-config
+  namespace: $NAMESPACE
+data:
+  config_local.py: |
+    import os
+    from pgadmin import create_app
+    application = create_app()
+    
+    # Server configuration
+    SERVER_MODE = False
+    MASTER_PASSWORD_REQUIRED = False
+    
+    # Security settings
+    SECURITY_PASSWORD_SALT = 'pgadmin-salt-key'
+    SECRET_KEY = 'pgadmin-secret-key'
+    
+    # Database settings
+    SQLITE_PATH = '/var/lib/pgadmin/pgadmin4.db'
+    
+    # Logging configuration
+    LOG_FILE = '/var/log/pgadmin/pgadmin.log'
+    CONSOLE_LOG_FILE = '/var/log/pgadmin/pgadmin_console.log'
+    
+    # Session configuration
+    SESSION_DB_PATH = '/var/lib/pgadmin/sessions'
+    
+    # Storage configuration
+    STORAGE_DIR = '/var/lib/pgadmin/storage'
+    
+    # Azure credential cache
+    AZURE_CREDENTIAL_CACHE_DIR = '/var/lib/pgadmin/azurecredentialcache'
+    
+    # Kerberos credential cache
+    KERBEROS_CREDENTIAL_CACHE_DIR = '/var/lib/pgadmin/kerberoscredentialcache'
+EOF
+
+cat << EOF > k8s/base/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: $PROJECT
+  namespace: $NAMESPACE
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  rules:
+  - host: $PROJECT.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: $PROJECT
+            port:
+              number: 80
+  - host: pgadmin.$PROJECT.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: pgadmin
+            port:
+              number: 80
+  - host: grafana.$PROJECT.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
+EOF
+
+# ==============================
+# Monitoring Stack
+# ==============================
+
+# Prometheus
+cat << EOF > k8s/base/prometheus-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: $NAMESPACE
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    scrape_configs:
+      - job_name: 'fastapi'
+        metrics_path: /metrics
+        static_configs:
+          - targets: ['$PROJECT:8000']
+        scrape_interval: 10s
+        
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+EOF
+
+cat << EOF > k8s/base/prometheus-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: $NAMESPACE
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus:latest
+        ports:
+        - containerPort: 9090
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus
+        - name: storage
+          mountPath: /prometheus
+        args:
+          - '--config.file=/etc/prometheus/prometheus.yml'
+          - '--storage.tsdb.path=/prometheus'
+          - '--web.console.libraries=/etc/prometheus/console_libraries'
+          - '--web.console.templates=/etc/prometheus/consoles'
+          - '--storage.tsdb.retention.time=200h'
+          - '--web.enable-lifecycle'
+      volumes:
+      - name: config
+        configMap:
+          name: prometheus-config
+      - name: storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: $NAMESPACE
+  labels:
+    app: prometheus
+spec:
+  selector:
+    app: prometheus
+  ports:
+  - port: 9090
+    targetPort: 9090
+  type: ClusterIP
+EOF
+
+# Loki
+cat << EOF > k8s/base/loki-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-config
+  namespace: $NAMESPACE
+data:
+  local-config.yaml: |
+    auth_enabled: false
+    
+    server:
+      http_listen_port: 3100
+      grpc_listen_port: 9096
+      
+    ingester:
+      wal:
+        enabled: true
+        dir: /loki/wal
+      lifecycler:
+        address: 127.0.0.1
+        ring:
+          kvstore:
+            store: inmemory
+          replication_factor: 1
+        final_sleep: 0s
+      chunk_idle_period: 1h
+      max_chunk_age: 1h
+      chunk_target_size: 1048576
+      chunk_retain_period: 30s
+      max_transfer_retries: 0
+    
+    schema_config:
+      configs:
+        - from: 2020-10-24
+          store: boltdb-shipper
+          object_store: filesystem
+          schema: v11
+          index:
+            prefix: index_
+            period: 24h
+    
+    storage_config:
+      boltdb_shipper:
+        active_index_directory: /loki/index
+        cache_location: /loki/cache
+        shared_store: filesystem
+      filesystem:
+        directory: /loki/chunks
+    
+    limits_config:
+      reject_old_samples: true
+      reject_old_samples_max_age: 168h
+      
+    chunk_store_config:
+      max_look_back_period: 0s
+    
+    table_manager:
+      retention_deletes_enabled: false
+      retention_period: 0s
+EOF
+
+cat << EOF > k8s/base/loki-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki
+  namespace: $NAMESPACE
+  labels:
+    app: loki
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      containers:
+      - name: loki
+        image: grafana/loki:2.9.0
+        args:
+          - "-config.file=/etc/loki/local-config.yaml"
+        ports:
+        - containerPort: 3100
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/loki
+        - name: storage
+          mountPath: /loki
+      volumes:
+      - name: config
+        configMap:
+          name: loki-config
+      - name: storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: $NAMESPACE
+  labels:
+    app: loki
+spec:
+  selector:
+    app: loki
+  ports:
+  - port: 3100
+    targetPort: 3100
+  type: ClusterIP
+EOF
+
+# Promtail
+cat << EOF > k8s/base/promtail-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: $NAMESPACE
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: 9080
+      grpc_listen_port: 0
+    
+    positions:
+      filename: /tmp/positions.yaml
+    
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+        
+    scrape_configs:
+    - job_name: kubernetes-pods
+      kubernetes_sd_configs:
+      - role: pod
+      pipeline_stages:
+      - docker: {}
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_name]
+        target_label: __service__
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        target_label: __host__
+      - action: replace
+        replacement: \$1
+        separator: /
+        source_labels:
+        - __meta_kubernetes_namespace
+        - __meta_kubernetes_pod_label_app
+        target_label: job
+      - action: replace
+        source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - action: replace
+        source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - action: replace
+        source_labels: [__meta_kubernetes_pod_container_name]
+        target_label: container
+      - replacement: /var/log/pods/*\$1/*.log
+        separator: /
+        source_labels:
+        - __meta_kubernetes_pod_uid
+        - __meta_kubernetes_pod_container_name
+        target_label: __path__
+      - action: replace
+        replacement: /var/log/pods/*\$1/*.log
+        separator: /
+        source_labels:
+        - __meta_kubernetes_pod_annotation_kubernetes_io_config_mirror
+        target_label: __path__
+EOF
+
+cat << EOF > k8s/base/promtail-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: promtail
+  namespace: $NAMESPACE
+  labels:
+    app: promtail
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: promtail
+  template:
+    metadata:
+      labels:
+        app: promtail
+    spec:
+      containers:
+      - name: promtail
+        image: grafana/promtail:2.9.0
+        args:
+          - "-config.file=/etc/promtail/promtail.yaml"
+        ports:
+        - containerPort: 9080
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "100m"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/promtail
+        - name: pods
+          mountPath: /var/log/pods
+          readOnly: true
+        - name: containers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: promtail-config
+      - name: pods
+        hostPath:
+          path: /var/log/pods
+      - name: containers
+        hostPath:
+          path: /var/lib/docker/containers
+EOF
+
+# Tempo
+cat << EOF > k8s/base/tempo-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: $NAMESPACE
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+      grpc_listen_port: 9095
+      
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            http:
+            grpc:
+            
+    ingester:
+      max_block_duration: 5m
+      trace_idle_period: 10s
+      
+    compactor:
+      compaction:
+        block_retention: 1h
+        compacted_block_retention: 10m
+        
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo/traces
+        pool:
+          max_workers: 100
+          queue_depth: 10000
+          
+    overrides:
+      per_tenant_override_config: /etc/tempo/overrides.yaml
+EOF
+
+cat << 'EOF' > k8s/base/tempo-overrides.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-overrides
+  namespace: $NAMESPACE
+data:
+  overrides.yaml: |
+    overrides:
+EOF
+
+cat << EOF > k8s/base/tempo-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: $NAMESPACE
+  labels:
+    app: tempo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+    spec:
+      containers:
+      - name: tempo
+        image: grafana/tempo:2.5.0
+        args:
+          - "-config.file=/etc/tempo/tempo.yaml"
+        ports:
+        - containerPort: 3200
+        - containerPort: 9095
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/tempo
+        - name: storage
+          mountPath: /var/tempo
+        - name: overrides
+          mountPath: /etc/tempo/overrides.yaml
+          subPath: overrides.yaml
+      volumes:
+      - name: config
+        configMap:
+          name: tempo-config
+      - name: overrides
+        configMap:
+          name: tempo-overrides
+      - name: storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: $NAMESPACE
+  labels:
+    app: tempo
+spec:
+  selector:
+    app: tempo
+  ports:
+  - name: http
+    port: 3200
+    targetPort: 3200
+  - name: grpc
+    port: 9095
+    targetPort: 9095
+  type: ClusterIP
+EOF
+
+# Grafana
+cat << EOF > k8s/base/grafana-provisioning-datasources.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: $NAMESPACE
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        editable: true
+        
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+        editable: true
+        
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://tempo:3200
+        editable: true
+EOF
+
+cat << EOF > k8s/base/grafana-provisioning-dashboards.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: $NAMESPACE
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        updateIntervalSeconds: 10
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards
+EOF
+
+cat << 'EOF' > k8s/base/grafana-dashboard-fastapi.json
+{
+  "title": "FastAPI Overview",
+  "tags": ["fastapi", "monitoring"],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP Requests",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rate(http_requests_total[5m])",
+          "legendFormat": "req/s"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "Application Logs",
+      "type": "logs",
+      "datasource": "Loki",
+      "targets": [
+        {
+          "expr": "{app=\"$PROJECT\"}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 36,
+  "version": 1
+}
+EOF
+
+cat << EOF > k8s/base/grafana-dashboard-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-fastapi
+  namespace: $NAMESPACE
+  labels:
+    grafana_dashboard: "1"
+data:
+  fastapi-overview.json: |
+$(cat k8s/base/grafana-dashboard-fastapi.json | sed 's/^/    /')
+EOF
+
+cat << EOF > k8s/base/grafana-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: $NAMESPACE
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          value: admin
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: admin
+        - name: GF_FEATURE_TOGGLES_ENABLE
+          value: "publicDashboards"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: datasources
+          mountPath: /etc/grafana/provisioning/datasources
+        - name: dashboards
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: dashboard-files
+          mountPath: /var/lib/grafana/dashboards
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: datasources
+        configMap:
+          name: grafana-datasources
+      - name: dashboards
+        configMap:
+          name: grafana-dashboards
+      - name: dashboard-files
+        configMap:
+          name: grafana-dashboard-fastapi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: $NAMESPACE
+  labels:
+    app: grafana
+spec:
+  selector:
+    app: grafana
+  ports:
+  - port: 3000
+    targetPort: 3000
+  type: ClusterIP
+EOF
+
+# ==============================
+# Kyverno Policies
+# ==============================
+cat << EOF > k8s/base/kyverno-policy.yaml
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+spec:
+  validationFailureAction: enforce
+  background: false
+  rules:
+  - name: validate-resource-limits
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+    validate:
+      message: "CPU and memory resource limits are required."
+      pattern:
+        spec:
+          containers:
+          - resources:
+              limits:
+                memory: "?*"
+                cpu: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-probes
+spec:
+  validationFailureAction: enforce
+  background: false
+  rules:
+  - name: validate-liveness-readiness-probes
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+    validate:
+      message: "Liveness and readiness probes are required."
+      pattern:
+        spec:
+          containers:
+          - livenessProbe:
+              periodSeconds: ">0"
+            readinessProbe:
+              periodSeconds: ">0"
+EOF
+
+# ==============================
+# Kustomization
+# ==============================
+cat << EOF > k8s/base/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: $NAMESPACE
+
+resources:
+  - configmap.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+  - postgres.yaml
+  - pgadmin.yaml
+  - ingress.yaml
+  - prometheus-config.yaml
+  - prometheus-deployment.yaml
+  - grafana-provisioning-datasources.yaml
+  - grafana-provisioning-dashboards.yaml
+  - grafana-dashboard-config.yaml
+  - grafana-deployment.yaml
+  - loki-config.yaml
+  - loki-deployment.yaml
+  - promtail-config.yaml
+  - promtail-deployment.yaml
+  - tempo-config.yaml
+  - tempo-overrides.yaml
+  - tempo-deployment.yaml
+  - kyverno-policy.yaml
+
+commonLabels:
+  app: $PROJECT
+  environment: development
+
+images:
+  - name: $REGISTRY
+    newTag: latest
+EOF
+
+# ==============================
+# ArgoCD Application (POPRAWIONY - BEZ finalizers)
+# ==============================
+cat << EOF > k8s/base/argocd-app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: $PROJECT
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/exea-centrum/$PROJECT.git
+    targetRevision: main
+    path: k8s/base
+    kustomize:
+      images:
+      - name: $REGISTRY
+        newTag: latest
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: $NAMESPACE
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - ApplyOutOfSyncOnly=true
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas
+EOF
+
+# ==============================
+# GitHub Actions
 # ==============================
 cat << EOF > .github/workflows/ci-cd.yml
 name: Build and Test
@@ -411,15 +1550,38 @@ jobs:
         cache-to: type=gha,mode=max
 EOF
 
-echo "✅ USUNIĘTO krok deploy z workflow!"
-echo "🎯 Teraz ArgoCD będzie automatycznie synchronizować aplikację:"
-echo "   1. GitHub Actions buduje i pushuje obraz"
-echo "   2. ArgoCD wykrywa zmianę w repozytorium"
-echo "   3. ArgoCD automatycznie deployuje nową wersję"
+echo "✅ POPRAWIONO ArgoCD Application - USUNIĘTO finalizers!"
+echo "📋 Plik k8s/base/argocd-app.yaml teraz zawiera:"
 echo ""
-echo "📊 Workflow zawiera teraz tylko:"
-echo "   - Lintowanie i formatowanie kodu"
-echo "   - Uruchamianie testów"
-echo "   - Budowanie i pushowanie obrazu Docker"
+echo "apiVersion: argoproj.io/v1alpha1"
+echo "kind: Application"
+echo "metadata:"
+echo "  name: $PROJECT"
+echo "  namespace: argocd"
+echo "spec:"
+echo "  project: default"
+echo "  source:"
+echo "    repoURL: https://github.com/exea-centrum/$PROJECT.git"
+echo "    targetRevision: main"
+echo "    path: k8s/base"
+echo "    kustomize:"
+echo "      images:"
+echo "      - name: $REGISTRY"
+echo "        newTag: latest"
+echo "  destination:"
+echo "    server: https://kubernetes.default.svc"
+echo "    namespace: $NAMESPACE"
+echo "  syncPolicy:"
+echo "    automated:"
+echo "      prune: true"
+echo "      selfHeal: true"
+echo "    syncOptions:"
+echo "    - CreateNamespace=true"
+echo "    - ApplyOutOfSyncOnly=true"
+echo "  ignoreDifferences:"
+echo "  - group: apps"
+echo "    kind: Deployment"
+echo "    jsonPointers:"
+echo "    - /spec/replicas"
 echo ""
-echo "🚀 ArgoCD zajmie się resztą!"
+echo "🚀 ArgoCD Application jest teraz poprawnie skonfigurowany!"
