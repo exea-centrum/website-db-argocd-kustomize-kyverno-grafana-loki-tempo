@@ -29,10 +29,23 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "200m"
-          securityContext:
-            runAsUser: 10001
-            runAsGroup: 10001
-            readOnlyRootFilesystem: true
+          # DODANE: Health checks dla Kyverno
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 3100
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3100
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
           volumeMounts:
             - name: config
               mountPath: /etc/loki
@@ -44,8 +57,6 @@ spec:
             name: loki-config
         - name: storage
           emptyDir: {}
-      securityContext:
-        fsGroup: 10001
 ---
 apiVersion: v1
 kind: Service
