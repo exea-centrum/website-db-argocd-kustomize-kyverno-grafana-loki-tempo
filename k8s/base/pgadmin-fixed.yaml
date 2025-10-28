@@ -20,15 +20,9 @@ spec:
           image: dpage/pgadmin4:latest
           env:
             - name: PGADMIN_DEFAULT_EMAIL
-              valueFrom:
-                secretKeyRef:
-                  name: db-secret
-                  key: pgadmin-email
+              value: "admin@admin.com" # Bezpośrednia wartość zamiast Secret
             - name: PGADMIN_DEFAULT_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: db-secret
-                  key: pgadmin-password
+              value: "admin" # Bezpośrednia wartość zamiast Secret
             - name: PGADMIN_CONFIG_SERVER_MODE
               value: "False"
             - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
@@ -42,6 +36,7 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "200m"
+          # USUNIĘTE: volumeMounts dla config - używamy tylko danych
           volumeMounts:
             - name: pgadmin-data
               mountPath: /var/lib/pgadmin
@@ -49,14 +44,20 @@ spec:
             httpGet:
               path: /misc/ping
               port: 80
-            initialDelaySeconds: 60
+            initialDelaySeconds: 60 # Więcej czasu na startup
             periodSeconds: 10
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /misc/ping
               port: 80
             initialDelaySeconds: 30
             periodSeconds: 5
+            timeoutSeconds: 3
+          # DODANE: security context dla pgAdmin
+          securityContext:
+            runAsUser: 5050 # Standardowy użytkownik pgAdmin
+            runAsGroup: 5050
       volumes:
         - name: pgadmin-data
           persistentVolumeClaim:

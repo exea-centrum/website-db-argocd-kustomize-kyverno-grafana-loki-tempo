@@ -19,7 +19,7 @@ spec:
         - name: loki
           image: grafana/loki:2.9.0
           args:
-            - "-config.file=/etc/loki/local-config.yaml"
+            - "-config.file=/etc/loki/loki.yaml"
           ports:
             - containerPort: 3100
           resources:
@@ -29,23 +29,18 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "200m"
-          # DODANE: Health checks dla Kyverno
           livenessProbe:
             httpGet:
               path: /ready
               port: 3100
-            initialDelaySeconds: 30
+            initialDelaySeconds: 45
             periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /ready
               port: 3100
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 3
+            initialDelaySeconds: 45
+            periodSeconds: 10
           volumeMounts:
             - name: config
               mountPath: /etc/loki
