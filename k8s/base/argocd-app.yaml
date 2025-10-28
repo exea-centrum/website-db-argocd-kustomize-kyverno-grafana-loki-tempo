@@ -3,16 +3,15 @@ kind: Application
 metadata:
   name: website-db-argocd-kustomize-kyverno-grafana-loki-tempo
   namespace: argocd
+  labels:
+    app.kubernetes.io/name: website-db-argocd-kustomize-kyverno-grafana-loki-tempo
+    app.kubernetes.io/instance: website-db-argocd-kustomize-kyverno-grafana-loki-tempo
 spec:
   project: default
   source:
     repoURL: https://github.com/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo.git
-    targetRevision: main
+    targetRevision: HEAD
     path: k8s/base
-    kustomize:
-      images:
-      - name: ghcr.io/exea-centrum/website-db-argocd-kustomize-kyverno-grafana-loki-tempo
-        newTag: latest
   destination:
     server: https://kubernetes.default.svc
     namespace: davtrowebdb
@@ -21,10 +20,4 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-    - CreateNamespace=true
-    - ApplyOutOfSyncOnly=true
-  ignoreDifferences:
-  - group: apps
-    kind: Deployment
-    jsonPointers:
-    - /spec/replicas
+      - CreateNamespace=true
