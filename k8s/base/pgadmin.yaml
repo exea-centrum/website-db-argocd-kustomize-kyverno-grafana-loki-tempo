@@ -3,9 +3,30 @@ kind: Deployment
 metadata:
   name: pgadmin
   namespace: davtrowebdb
+  labels:
+    app: pgadmin
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgadmin
   template:
+    metadata:
+      labels:
+        app: pgadmin
     spec:
+      initContainers:
+        - name: fix-permissions
+          image: busybox
+          command:
+            [
+              "sh",
+              "-c",
+              'chown -R 5050:5050 /var/lib/pgadmin && echo "Permissions fixed"',
+            ]
+          volumeMounts:
+            - name: pgadmin-data
+              mountPath: /var/lib/pgadmin
       containers:
         - name: pgadmin
           image: dpage/pgadmin4:8.8
@@ -17,6 +38,10 @@ spec:
             - name: PGADMIN_CONFIG_SERVER_MODE
               value: "False"
             - name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED
+              value: "False"
+            - name: PGADMIN_CONFIG_WTF_CSRF_ENABLED
+              value: "False"
+            - name: PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION
               value: "False"
             - name: PGADMIN_PORT
               value: "5050"
@@ -32,18 +57,51 @@ spec:
           volumeMounts:
             - name: pgadmin-data
               mountPath: /var/lib/pgadmin
-          # Użyj init container do ustawienia permisji
-          securityContext:
-            runAsUser: 5050
-            runAsGroup: 5050
-      initContainers:
-        - name: fix-permissions
-          image: busybox
-          command: ["sh", "-c", "chown -R 5050:5050 /var/lib/pgadmin"]
-          volumeMounts:
-            - name: pgadmin-data
-              mountPath: /var/lib/pgadmin
+              allowPrivilegeEscalation: false
+          livenessProbe:
+            httpGet:
+              path: /misc/ping
+              port: 5050
+            initialDelaySeconds: 90
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /misc/ping
+              port: 5050
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
       volumes:
         - name: pgadmin-data
           persistentVolumeClaim:
             claimName: pgadmin-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgadmin
+  namespace: davtrowebdb
+  labels:
+    app: pgadmin
+spec:
+  selector:
+    app: pgadmin
+  ports:
+    - port: 5050
+      targetPort: 5050
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pgadmin-pvc
+  namespace: davtrowebdb
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
