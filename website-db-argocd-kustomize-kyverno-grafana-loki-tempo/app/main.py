@@ -23,7 +23,9 @@ async def home(request: Request):
 
 
 @app.post("/submit", response_class=HTMLResponse)
-async def submit(request: Request, question: str = Form(...), answer: str = Form(...)):
+async def submit(
+    request: Request, question: str = Form(...), answer: str = Form(...)
+):
     try:
         conn = psycopg2.connect(DB_CONN)
         cur = conn.cursor()
@@ -75,7 +77,3 @@ async def health_check():
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
-
-
-# Usuwamy endpoint /metrics ponieważ jest już dostarczany przez prometheus-fastapi-instrumentator
-# pod ścieżką /metrics w formacie Prometheus
