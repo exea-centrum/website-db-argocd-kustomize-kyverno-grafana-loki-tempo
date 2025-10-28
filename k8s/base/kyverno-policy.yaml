@@ -6,21 +6,22 @@ spec:
   validationFailureAction: enforce
   background: false
   rules:
-  - name: validate-resource-limits
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "CPU and memory resource limits are required."
-      pattern:
-        spec:
-          containers:
+    - name: validate-resource-limits
+      match:
+        any:
           - resources:
-              limits:
-                memory: "?*"
-                cpu: "?*"
+              kinds:
+                - Pod
+      validate:
+        message: "CPU and memory resource limits are required."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    memory: "?*"
+                    cpu: "?*"
+
 ---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
@@ -30,18 +31,25 @@ spec:
   validationFailureAction: enforce
   background: false
   rules:
-  - name: validate-liveness-readiness-probes
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "Liveness and readiness probes are required."
-      pattern:
-        spec:
-          containers:
-          - livenessProbe:
-              periodSeconds: ">0"
-            readinessProbe:
-              periodSeconds: ">0"
+    - name: validate-liveness-readiness-probes
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      # DODANE: Wyklucz init containers i niektóre systemowe pody
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+      validate:
+        message: "Liveness and readiness probes are required for all containers."
+        pattern:
+          spec:
+            containers:
+              - (livenessProbe):
+                  periodSeconds: ">0"
+                (readinessProbe):
+                  periodSeconds: ">0"
