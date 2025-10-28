@@ -9,9 +9,10 @@ data:
       http_listen_port: 3200
     distributor:
       receivers:
-        jaeger:
+        otlp:
           protocols:
-            thrift_http:
+            http: {}
+            grpc: {}
     ingester:
       trace_idle_period: 10s
       max_block_duration: 5m
@@ -22,7 +23,7 @@ data:
       trace:
         backend: local
         local:
-          path: /tmp/tempo/traces
+          path: /var/tempo/traces
 ---
 apiVersion: v1
 kind: Service

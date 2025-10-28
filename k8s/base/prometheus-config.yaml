@@ -8,7 +8,7 @@ data:
     global:
       scrape_interval: 15s
     scrape_configs:
-      - job_name: fastapi
+      - job_name: 'fastapi'
         metrics_path: /metrics
         static_configs:
           - targets: ['website-db-argocd-kustomize-kyverno-grafana-loki-tempo:8000']
