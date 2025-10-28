@@ -34,5 +34,5 @@ spec:
   selector:
     app: tempo
   ports:
-    - port: 3200
-      targetPort: 3200
+  - port: 3200
+    targetPort: 3200

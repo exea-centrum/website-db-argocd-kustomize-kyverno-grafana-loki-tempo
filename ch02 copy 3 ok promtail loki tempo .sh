@@ -198,10 +198,10 @@ spec:
 EOF
 
 # ==============================
-# Monitoring (Prometheus, Loki, Tempo, Grafana)
+# Monitoring
 # ==============================
 
-# Prometheus Config + Deployment
+# Prometheus (Config + Deployment)
 cat << EOF > k8s/base/prometheus-config.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -248,7 +248,42 @@ spec:
           name: prometheus-config
 EOF
 
-# Loki Config + Deployment + Service
+# Grafana (Deployment + Service)
+cat << EOF > k8s/base/grafana-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: $NAMESPACE
+spec:
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        ports:
+        - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: $NAMESPACE
+spec:
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+EOF
+
+# Loki (config + deployment + service) --- wal mounted as emptyDir, config file key local-config.yaml
 cat << EOF > k8s/base/loki-config.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -299,6 +334,8 @@ spec:
       labels:
         app: loki
     spec:
+      securityContext:
+        runAsUser: 0
       containers:
       - name: loki
         image: grafana/loki:2.9.0
@@ -309,13 +346,17 @@ spec:
         volumeMounts:
         - name: config
           mountPath: /etc/loki
-        - name: wal
+        - name: wal-storage
           mountPath: /wal
+        - name: loki-data
+          mountPath: /loki
       volumes:
       - name: config
         configMap:
           name: loki-config
-      - name: wal
+      - name: wal-storage
+        emptyDir: {}
+      - name: loki-data
         emptyDir: {}
 ---
 apiVersion: v1
@@ -327,11 +368,11 @@ spec:
   selector:
     app: loki
   ports:
-  - port: 3100
-    targetPort: 3100
+    - port: 3100
+      targetPort: 3100
 EOF
 
-# Promtail Config + Deployment
+# Promtail (Config + Deployment)
 cat << EOF > k8s/base/promtail-config.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -383,7 +424,7 @@ spec:
           name: promtail-config
 EOF
 
-# Tempo Config + Deployment + Service
+# Tempo (Config + Deployment + Service) - using a current available tag
 cat << EOF > k8s/base/tempo-config.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -421,8 +462,8 @@ spec:
   selector:
     app: tempo
   ports:
-  - port: 3200
-    targetPort: 3200
+    - port: 3200
+      targetPort: 3200
 EOF
 
 cat << EOF > k8s/base/tempo-deployment.yaml
@@ -460,139 +501,6 @@ spec:
         emptyDir: {}
 EOF
 
-# Grafana Provisioning (datasources + dashboards)
-cat << EOF > k8s/base/grafana-provisioning-datasources.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-datasources
-  namespace: $NAMESPACE
-data:
-  datasources.yaml: |
-    apiVersion: 1
-    datasources:
-      - name: Prometheus
-        type: prometheus
-        access: proxy
-        url: http://prometheus:9090
-        isDefault: true
-      - name: Loki
-        type: loki
-        access: proxy
-        url: http://loki:3100
-      - name: Tempo
-        type: tempo
-        access: proxy
-        url: http://tempo:3200
-EOF
-
-cat << EOF > k8s/base/grafana-provisioning-dashboards.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-dashboards
-  namespace: $NAMESPACE
-data:
-  dashboards.yaml: |
-    apiVersion: 1
-    providers:
-      - name: 'default'
-        orgId: 1
-        folder: ''
-        type: file
-        disableDeletion: false
-        editable: true
-        options:
-          path: /var/lib/grafana/dashboards
-EOF
-
-cat << 'EOF' > k8s/base/grafana-dashboard-fastapi.json
-{
-  "title": "FastAPI Overview",
-  "refresh": "10s",
-  "panels": [
-    {
-      "type": "graph",
-      "title": "Requests per Second",
-      "targets": [{"expr": "rate(http_requests_total[1m])"}]
-    },
-    {
-      "type": "logs",
-      "title": "Application Logs",
-      "datasource": "Loki",
-      "targets": [{"expr": "{job=\"fastapi\"}"}]
-    },
-    {
-      "type": "traces",
-      "title": "Recent Traces",
-      "datasource": "Tempo"
-    }
-  ]
-}
-EOF
-
-cat << EOF > k8s/base/grafana-dashboard-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-dashboard-fastapi
-  namespace: $NAMESPACE
-data:
-  fastapi.json: |
-$(cat k8s/base/grafana-dashboard-fastapi.json | sed 's/^/    /')
-EOF
-
-cat << EOF > k8s/base/grafana-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: grafana
-  namespace: $NAMESPACE
-spec:
-  selector:
-    matchLabels:
-      app: grafana
-  template:
-    metadata:
-      labels:
-        app: grafana
-    spec:
-      containers:
-      - name: grafana
-        image: grafana/grafana:latest
-        ports:
-        - containerPort: 3000
-        volumeMounts:
-        - name: datasources
-          mountPath: /etc/grafana/provisioning/datasources
-        - name: dashboards
-          mountPath: /etc/grafana/provisioning/dashboards
-        - name: dashboard-files
-          mountPath: /var/lib/grafana/dashboards
-      volumes:
-      - name: datasources
-        configMap:
-          name: grafana-datasources
-      - name: dashboards
-        configMap:
-          name: grafana-dashboards
-      - name: dashboard-files
-        configMap:
-          name: grafana-dashboard-fastapi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: grafana
-  namespace: $NAMESPACE
-spec:
-  selector:
-    app: grafana
-  ports:
-  - port: 3000
-    targetPort: 3000
-EOF
-
 # ==============================
 # Kustomization
 # ==============================
@@ -604,9 +512,6 @@ resources:
 - ingress.yaml
 - prometheus-config.yaml
 - prometheus-deployment.yaml
-- grafana-provisioning-datasources.yaml
-- grafana-provisioning-dashboards.yaml
-- grafana-dashboard-config.yaml
 - grafana-deployment.yaml
 - loki-config.yaml
 - loki-deployment.yaml
@@ -664,4 +569,4 @@ jobs:
           docker push $REGISTRY:latest
 EOF
 
-echo "✅ Stack gotowy: Loki (WAL), Tempo (OTLP),
+echo "✅ Stack gotowy: Loki (WAL -> emptyDir), Tempo (tag 2.5.0), Promtail, Prometheus, Grafana. ArgoCD path: k8s/base"

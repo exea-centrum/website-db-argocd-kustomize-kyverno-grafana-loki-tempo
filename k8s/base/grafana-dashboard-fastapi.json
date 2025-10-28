@@ -1,0 +1,22 @@
+{
+  "title": "FastAPI Overview",
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Requests per Second",
+      "targets": [{"expr": "rate(http_requests_total[1m])"}]
+    },
+    {
+      "type": "logs",
+      "title": "Application Logs",
+      "datasource": "Loki",
+      "targets": [{"expr": "{job=\"fastapi\"}"}]
+    },
+    {
+      "type": "traces",
+      "title": "Recent Traces",
+      "datasource": "Tempo"
+    }
+  ]
+}
