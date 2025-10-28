@@ -196,11 +196,7 @@ spec:
               number: 80
 EOF
 
-# ==============================
-# Monitoring
-# ==============================
-
-# Prometheus
+# Monitoring (wszystko w jednym katalogu)
 cat << EOF > k8s/base/prometheus-config.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -247,7 +243,18 @@ spec:
           name: prometheus-config
 EOF
 
-# Grafana
+cat << EOF > k8s/base/grafana-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: $NAMESPACE
+data:
+  grafana.ini: |
+    [server]
+    http_port = 3000
+EOF
+
 cat << EOF > k8s/base/grafana-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -268,21 +275,8 @@ spec:
         image: grafana/grafana:latest
         ports:
         - containerPort: 3000
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: grafana
-  namespace: $NAMESPACE
-spec:
-  selector:
-    app: grafana
-  ports:
-    - port: 3000
-      targetPort: 3000
 EOF
 
-# Loki (naprawiony config path!)
 cat << EOF > k8s/base/loki-config.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -290,35 +284,9 @@ metadata:
   name: loki-config
   namespace: $NAMESPACE
 data:
-  local-config.yaml: |
+  loki.yaml: |
     server:
       http_listen_port: 3100
-    ingester:
-      lifecycler:
-        address: 127.0.0.1
-        ring:
-          kvstore:
-            store: inmemory
-          replication_factor: 1
-      chunk_idle_period: 1h
-      chunk_retain_period: 30s
-    schema_config:
-      configs:
-        - from: 2020-10-24
-          store: boltdb
-          object_store: filesystem
-          schema: v11
-          index:
-            prefix: index_
-            period: 24h
-    storage_config:
-      boltdb:
-        directory: /loki/index
-      filesystem:
-        directory: /loki/chunks
-    limits_config:
-      reject_old_samples: true
-      reject_old_samples_max_age: 168h
 EOF
 
 cat << EOF > k8s/base/loki-deployment.yaml
@@ -339,8 +307,6 @@ spec:
       containers:
       - name: loki
         image: grafana/loki:2.9.0
-        args:
-          - "-config.file=/etc/loki/local-config.yaml"
         ports:
         - containerPort: 3100
         volumeMounts:
@@ -350,21 +316,49 @@ spec:
       - name: config
         configMap:
           name: loki-config
----
+EOF
+
+cat << EOF > k8s/base/tempo-config.yaml
 apiVersion: v1
-kind: Service
+kind: ConfigMap
 metadata:
-  name: loki
+  name: tempo-config
+  namespace: $NAMESPACE
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+EOF
+
+cat << EOF > k8s/base/tempo-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
   namespace: $NAMESPACE
 spec:
   selector:
-    app: loki
-  ports:
-    - port: 3100
-      targetPort: 3100
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+    spec:
+      containers:
+      - name: tempo
+        image: grafana/tempo:1.6.0
+        ports:
+        - containerPort: 3200
+        volumeMounts:
+        - name: config
+          mountPath: /etc/tempo
+      volumes:
+      - name: config
+        configMap:
+          name: tempo-config
 EOF
 
-# Promtail (zbiera logi z FastAPI)
 cat << EOF > k8s/base/promtail-config.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -403,8 +397,6 @@ spec:
       containers:
       - name: promtail
         image: grafana/promtail:2.9.0
-        args:
-          - "-config.file=/etc/promtail/promtail.yaml"
         ports:
         - containerPort: 9080
         volumeMounts:
@@ -416,34 +408,7 @@ spec:
           name: promtail-config
 EOF
 
-# Tempo
-cat << EOF > k8s/base/tempo-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: tempo
-  namespace: $NAMESPACE
-spec:
-  selector:
-    matchLabels:
-      app: tempo
-  template:
-    metadata:
-      labels:
-        app: tempo
-    spec:
-      containers:
-      - name: tempo
-        image: grafana/tempo:1.6.0
-        args:
-          - "-config.file=/etc/tempo/tempo.yaml"
-        ports:
-        - containerPort: 3200
-EOF
-
-# ==============================
 # Kustomization
-# ==============================
 cat << EOF > k8s/base/kustomization.yaml
 resources:
 - deployment.yaml
@@ -452,16 +417,18 @@ resources:
 - ingress.yaml
 - prometheus-config.yaml
 - prometheus-deployment.yaml
+- grafana-config.yaml
 - grafana-deployment.yaml
 - loki-config.yaml
 - loki-deployment.yaml
+- tempo-config.yaml
+- tempo-deployment.yaml
 - promtail-config.yaml
 - promtail-deployment.yaml
-- tempo-deployment.yaml
 EOF
 
 # ==============================
-# ArgoCD App
+# ArgoCD
 # ==============================
 cat << EOF > k8s/base/argocd-app.yaml
 apiVersion: argoproj.io/v1alpha1
@@ -487,7 +454,7 @@ spec:
 EOF
 
 # ==============================
-# GitHub Actions (build & push)
+# GitHub Actions
 # ==============================
 cat << EOF > .github/workflows/deploy.yml
 name: Build and Push
@@ -508,4 +475,4 @@ jobs:
           docker push $REGISTRY:latest
 EOF
 
-echo "✅ All-in-one stack gotowy — Loki fixed, Promtail connected, ArgoCD path: k8s/base"
+echo "✅ All-in-one stack gotowy — ArgoCD path: k8s/base"
