@@ -11,7 +11,9 @@ templates = Jinja2Templates(directory="templates")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fastapi_app")
 
-DB_CONN = os.getenv("DATABASE_URL", "dbname=appdb user=appuser password=apppass host=db")
+DB_CONN = os.getenv(
+    "DATABASE_URL", "dbname=appdb user=appuser password=apppass host=db"
+)
 
 Instrumentator().instrument(app).expose(app)
 
@@ -19,7 +21,9 @@ Instrumentator().instrument(app).expose(app)
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     questions = ["Jak oceniasz usługę?", "Czy polecisz nas?", "Jak często korzystasz?"]
-    return templates.TemplateResponse("form.html", {"request": request, "questions": questions})
+    return templates.TemplateResponse(
+        "form.html", {"request": request, "questions": questions}
+    )
 
 
 @app.post("/submit", response_class=HTMLResponse)
@@ -47,7 +51,11 @@ async def submit(request: Request, question: str = Form(...), answer: str = Form
             {
                 "request": request,
                 "submitted": True,
-                "questions": ["Jak oceniasz usługę?", "Czy polecisz nas?", "Jak często korzystasz?"],
+                "questions": [
+                    "Jak oceniasz usługę?",
+                    "Czy polecisz nas?",
+                    "Jak często korzystasz?",
+                ],
             },
         )
     except Exception as e:
@@ -57,7 +65,11 @@ async def submit(request: Request, question: str = Form(...), answer: str = Form
             {
                 "request": request,
                 "error": True,
-                "questions": ["Jak oceniasz usługę?", "Czy polecisz nas?", "Jak często korzystasz?"],
+                "questions": [
+                    "Jak oceniasz usługę?",
+                    "Czy polecisz nas?",
+                    "Jak często korzystasz?",
+                ],
             },
         )
     finally:
